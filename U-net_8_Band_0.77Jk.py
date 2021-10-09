@@ -1,27 +1,33 @@
-# https://www.kaggle.com/drn01z3/end-to-end-baseline-with-u-net-keras
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 import pandas as pd
-from tensorflow.keras import layers
-from tensorflow.python.keras.backend import concatenate
 from shapely.wkt import loads as wkt_loads
 import tifffile as tiff
 import os
 import random
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, Conv2D
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ModelCheckpoint, LearningRateScheduler
-from tensorflow.keras import backend as K, Sequential
+import tensorflow as tf
+from tensorflow.keras import backend as K
 from sklearn.metrics import jaccard_score
+#from sklearn.metrics import jaccard_score
 from shapely.geometry import MultiPolygon, Polygon
 import shapely.wkt
 import shapely.affinity
 from collections import defaultdict
+from tensorflow.keras import Input
+from tensorflow.keras.models import *
+from tensorflow.keras.layers import *
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import ModelCheckpoint, LearningRateScheduler
+#from tensorflow.keras import backend as keras
+from pathlib import Path
+import gc
+import warnings
+warnings.filterwarnings("ignore")
+
+
 
 N_Cls = 10
-# inDir = '/home/n01z3/dataset/dstl'
 inDir = 'dataset'
 DF = pd.read_csv(inDir + '/train_wkt_v4.csv')
 GS = pd.read_csv(inDir + '/grid_sizes.csv', names=['ImageId', 'Xmax', 'Ymin'], skiprows=1)
@@ -29,6 +35,13 @@ SB = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
 ISZ = 160
 smooth = 1e-12
 
+
+datadir = Path(f'./{inDir}/unet_8_band/data/')
+if not datadir.exists():
+    os.makedirs(f'./{inDir}/unet_8_band/data/')
+    os.makedirs(f'./{inDir}/unet_8_band/msk/')
+    os.makedirs(f'./{inDir}/unet_8_band/weights/')
+    os.makedirs(f'./{inDir}/unet_8_band/subm/')
 
 def _convert_coordinates_to_raster(coords, img_size, xymax):
     # __author__ = visoft
@@ -45,11 +58,13 @@ def _convert_coordinates_to_raster(coords, img_size, xymax):
     return coords_int
 
 
+
 def _get_xmax_ymin(grid_sizes_panda, imageId):
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
     xmax, ymin = grid_sizes_panda[grid_sizes_panda.ImageId == imageId].iloc[0, 1:].astype(float)
     return (xmax, ymin)
+
 
 
 def _get_polygon_list(wkt_list_pandas, imageId, cType):
@@ -62,6 +77,7 @@ def _get_polygon_list(wkt_list_pandas, imageId, cType):
         assert len(multipoly_def) == 1
         polygonList = wkt_loads(multipoly_def.values[0])
     return polygonList
+
 
 
 def _get_and_convert_contours(polygonList, raster_img_size, xymax):
@@ -82,7 +98,6 @@ def _get_and_convert_contours(polygonList, raster_img_size, xymax):
             interior_list.append(interior_c)
     return perim_list, interior_list
 
-
 def _plot_mask_from_contours(raster_img_size, contours, class_value=1):
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
@@ -95,6 +110,7 @@ def _plot_mask_from_contours(raster_img_size, contours, class_value=1):
     return img_mask
 
 
+
 def generate_mask_for_image_and_class(raster_size, imageId, class_type, grid_sizes_panda=GS, wkt_list_pandas=DF):
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
@@ -105,6 +121,7 @@ def generate_mask_for_image_and_class(raster_size, imageId, class_type, grid_siz
     return mask
 
 
+
 def M(image_id):
     # __author__ = amaia
     # https://www.kaggle.com/aamaia/dstl-satellite-imagery-feature-detection/rgb-using-m-bands-example
@@ -113,9 +130,8 @@ def M(image_id):
     img = np.rollaxis(img, 0, 3)
     return img
 
-
-def stretch_n(bands, lower_percent=5, higher_percent=95):
-    out = np.zeros_like(bands)
+def stretch_n(bands, lower_percent=2, higher_percent=98):
+    out = np.zeros_like(bands).astype(np.float32)
     n = bands.shape[2]
     for i in range(n):
         a = 0  # np.min(band)
@@ -130,6 +146,7 @@ def stretch_n(bands, lower_percent=5, higher_percent=95):
     return out.astype(np.float32)
 
 
+
 def jaccard_coef(y_true, y_pred):
     # __author__ = Vladimir Iglovikov
     intersection = K.sum(y_true * y_pred, axis=[0, -1, -2])
@@ -140,43 +157,47 @@ def jaccard_coef(y_true, y_pred):
     return K.mean(jac)
 
 
+
 def jaccard_coef_int(y_true, y_pred):
-    # __author__ = Vladimir Iglovikov
+     # __author__ = Vladimir Iglovikov
     y_pred_pos = K.round(K.clip(y_pred, 0, 1))
 
     intersection = K.sum(y_true * y_pred_pos, axis=[0, -1, -2])
-    sum_ = K.sum(y_true + y_pred, axis=[0, -1, -2])
+    sum_ = K.sum(y_true + y_pred_pos, axis=[0, -1, -2])
     jac = (intersection + smooth) / (sum_ - intersection + smooth)
     return K.mean(jac)
 
 
+
 def stick_all_train():
+    print ("let's stick all imgs together")
     s = 835
 
     x = np.zeros((5 * s, 5 * s, 8))
     y = np.zeros((5 * s, 5 * s, N_Cls))
 
     ids = sorted(DF.ImageId.unique())
-    print(len(ids))
+    print (len(ids))
     for i in range(5):
         for j in range(5):
             id = ids[5 * i + j]
 
             img = M(id)
             img = stretch_n(img)
-            print(img.shape, id, np.amax(img), np.amin(img))
+            print (img.shape, id, np.amax(img), np.amin(img))
             x[s * i:s * i + s, s * j:s * j + s, :] = img[:s, :s, :]
             for z in range(N_Cls):
                 y[s * i:s * i + s, s * j:s * j + s, z] = generate_mask_for_image_and_class(
                     (img.shape[0], img.shape[1]), id, z + 1)[:s, :s]
 
-    print(np.amax(y), np.amin(y))
+    print (np.amax(y), np.amin(y))
 
-    np.save(f'{inDir}/x_trn_%d' % N_Cls, x)
-    np.save(f'{inDir}/y_trn_%d' % N_Cls, y)
+    np.save(f'{inDir}/unet_8_band/data/x_trn_%d' % N_Cls, x)
+    np.save(f'{inDir}/unet_8_band/data/y_trn_%d' % N_Cls, y)
 
 
-def get_patches(img, msk, amt=10000, aug=True):
+
+def get_patches(img, msk, amt=2000, aug=True):
     is2 = int(1.0 * ISZ)
     xm, ym = img.shape[0] - is2, img.shape[1] - is2
 
@@ -205,94 +226,94 @@ def get_patches(img, msk, amt=10000, aug=True):
                 y.append(ms)
 
     x, y = 2 * np.transpose(x, (0, 3, 1, 2)) - 1, np.transpose(y, (0, 3, 1, 2))
-    print(x.shape, y.shape, np.amax(x), np.amin(x), np.amax(y), np.amin(y))
+    print (x.shape, y.shape, np.amax(x), np.amin(x), np.amax(y), np.amin(y))
+    im = None
+    ms = None
+    xc = None
+    yc = None
+    del(im,ms,xc,yc)
+    gc.collect()
     return x, y
 
 
+
 def make_val():
-    img = np.load(f'{inDir}/x_trn_%d.npy' % N_Cls)
-    msk = np.load(f'{inDir}/y_trn_%d.npy' % N_Cls)
-    x, y = get_patches(img, msk, amt=3000)
+    print ("let's pick some samples for validation")
+    img = np.load(f'{inDir}/unet_8_band/data/x_trn_%d.npy' % N_Cls)
+    msk = np.load(f'{inDir}/unet_8_band/data/y_trn_%d.npy' % N_Cls)
+    x, y = get_patches(img, msk, amt=2000)
 
-    np.save(f'{inDir}/x_tmp_%d' % N_Cls, x)
-    np.save(f'{inDir}/y_tmp_%d' % N_Cls, y)
-
-def get_unet_seq():
-    model = Sequential([
-        layers.Input((8,ISZ,ISZ)),
-        layers.Conv2D(32,3,3, activation='relu', padding='same'),
-        layers.Conv2D(32,3,3, activation='relu', padding='same'),
-        layers.MaxPooling2D(pool_size=(2,2), padding='same'),
-
-        layers.Conv2D(64,3,3, activation='relu', padding='same'),
-        layers.Conv2D(64,3,3, activation='relu', padding='same'),
-        layers.MaxPooling2D(pool_size=(2,2)),
-        
-        layers.Conv2D(128,3,3, activation='relu', padding='same'),
-        layers.Conv2D(128,3,3, activation='relu', padding='same'),
-        layers.MaxPooling2D(pool_size=(2,2)),
-
-        layers.Conv2D(256,3,3, activation='relu', padding='same'),
-        layers.Conv2D(256,3,3, activation='relu', padding='same'),
-        layers.MaxPooling2D(pool_size=(2,2)),
-
-        layers.Conv2D(512,3,3, activation='relu', padding='same'),
-        layers.Conv2D(512,3,3, activation='relu', padding='same'),
+    np.save(f'{inDir}/unet_8_band/data/x_tmp_%d' % N_Cls, x)
+    np.save(f'{inDir}/unet_8_band/data/y_tmp_%d' % N_Cls, y)
+    
+    img = None
+    msk = None
+    x = None
+    y = None
+    del(img,msk,x,y)
+    gc.collect()
 
 
-    ])
 
+def jaccard_loss(y_true, y_pred):
+    return -jaccard_coef(y_true, y_pred)
 
 def get_unet():
     inputs = Input((8, ISZ, ISZ))
-    conv1 = Conv2D(32, 3, 3, activation='relu', padding='same')(inputs)
-    conv1 = Conv2D(32, 3, 3, activation='relu', padding='same')(conv1)
-    pool1 = MaxPooling2D(pool_size=(2, 2), padding='same')(conv1)
+    conv1 = Conv2D(32, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(inputs)
+    conv1 = Conv2D(32, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv1)
+    pool1 = MaxPooling2D(pool_size=(2, 2),data_format='channels_first')(conv1)
+    conv2 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(pool1)
+    conv2 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv2)
+    pool2 = MaxPooling2D(pool_size=(2, 2),data_format='channels_first')(conv2)
+    conv3 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(pool2)
+    conv3 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv3)
+    pool3 = MaxPooling2D(pool_size=(2, 2),data_format='channels_first')(conv3)
+    conv4 = Conv2D(256, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(pool3)
+    conv4 = Conv2D(256, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv4)
+    drop4 = Dropout(0.5)(conv4)
+    pool4 = MaxPooling2D(pool_size=(2, 2),data_format='channels_first')(drop4)
 
-    conv2 = Conv2D(64, 3, 3, activation='relu', padding='same')(pool1)
-    conv2 = Conv2D(64, 3, 3, activation='relu', padding='same')(conv2)
-    pool2 = MaxPooling2D(pool_size=(2, 2), padding='same')(conv2)
+    conv5 = Conv2D(512, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(pool4)
+    conv5 = Conv2D(512, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv5)
+    drop5 = Dropout(0.5)(conv5)
 
-    conv3 = Conv2D(128, 3, 3, activation='relu', padding='same')(pool2)
-    conv3 = Conv2D(128, 3, 3, activation='relu', padding='same')(conv3)
-    pool3 = MaxPooling2D(pool_size=(2, 2), padding='same')(conv3)
+    up6 = Conv2D(256, 2, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(UpSampling2D(size = (2,2),data_format='channels_first')(drop5))
+    merge6 = concatenate([drop4,up6], axis = 1)
+    conv6 = Conv2D(256, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(merge6)
+    conv6 = Conv2D(256, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv6)
 
-    conv4 = Conv2D(256, 3, 3, activation='relu', padding='same')(pool3)
-    conv4 = Conv2D(256, 3, 3, activation='relu', padding='same')(conv4)
-    pool4 = MaxPooling2D(pool_size=(2, 2), padding='same')(conv4)
+    up7 = Conv2D(128, 2, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(UpSampling2D(size = (2,2),data_format='channels_first')(conv6))
+    merge7 = concatenate([conv3,up7], axis = 1)
+    conv7 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(merge7)
+    conv7 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv7)
 
-    conv5 = Conv2D(512, 3, 3, activation='relu', padding='same')(pool4)
-    conv5 = Conv2D(512, 3, 3, activation='relu', padding='same')(conv5)
-    up6 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], axis=1)
-    # up6 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], mode='concat', concat_axis=1)
-    conv6 = Conv2D(256, 3, 3, activation='relu', padding='same')(up6)
-    conv6 = Conv2D(256, 3, 3, activation='relu', padding='same')(conv6)
+    up8 = Conv2D(64, 2, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(UpSampling2D(size = (2,2),data_format='channels_first')(conv7))
+    merge8 = concatenate([conv2,up8], axis = 1)
+    conv8 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(merge8)
+    conv8 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv8)
 
-    up7 = concatenate([UpSampling2D(size=(2, 2))(conv6), conv3], axis=1)
-    conv7 = Conv2D(128, 3, 3, activation='relu', padding='same')(up7)
-    conv7 = Conv2D(128, 3, 3, activation='relu', padding='same')(conv7)
+    up9 = Conv2D(32, 2, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(UpSampling2D(size = (2,2),data_format='channels_first')(conv8))
+    merge9 = concatenate([conv1,up9], axis = 1)
+    conv9 = Conv2D(32, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(merge9)
+    conv9 = Conv2D(32, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv9)
+    conv9 = Conv2D(32, 3, activation = 'relu', padding = 'same', kernel_initializer = 'he_normal',data_format='channels_first')(conv9)
+    conv10 = Conv2D(N_Cls, (1, 1),strides=1, activation = 'sigmoid',data_format='channels_first')(conv9)
 
-    up8 = concatenate([UpSampling2D(size=(2, 2))(conv7), conv2], axis=1)
-    conv8 = Conv2D(64, 3, 3, activation='relu', padding='same')(up8)
-    conv8 = Conv2D(64, 3, 3, activation='relu', padding='same')(conv8)
+    model = Model(inputs = inputs, outputs = conv10)
+    model.compile(optimizer=tf.keras.optimizers.Adam(lr=1e-4), loss='binary_crossentropy', metrics=[jaccard_coef, jaccard_coef_int, 'accuracy'])
+    #model.compile(optimizer=Adam(lr=1e-4), loss = jaccard_loss, metrics=[jaccard_coef, jaccard_coef_int, 'accuracy'])
 
-    up9 = concatenate([UpSampling2D(size=(2, 2))(conv8), conv1], axis=1)
-    conv9 = Conv2D(32, 3, 3, activation='relu', padding='same')(up9)
-    conv9 = Conv2D(32, 3, 3, activation='relu', padding='same')(conv9)
-
-    conv10 = Conv2D(N_Cls, 1, 1, activation='sigmoid')(conv9)
-
-    model = Model(input=inputs, output=conv10)
-    model.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=[jaccard_coef, jaccard_coef_int, 'accuracy'])
     return model
 
 
+
 def calc_jacc(model):
-    img = np.load(f'{inDir}/x_tmp_%d.npy' % N_Cls)
-    msk = np.load(f'{inDir}/y_tmp_%d.npy' % N_Cls)
+    img = np.load(f'{inDir}/unet_8_band/data/x_tmp_%d.npy' % N_Cls)
+    msk = np.load(f'{inDir}/unet_8_band/data/y_tmp_%d.npy' % N_Cls)
 
     prd = model.predict(img, batch_size=4)
-    print(prd.shape, msk.shape)
+    print (prd.shape, msk.shape)
     avg, trs = [], []
 
     for i in range(N_Cls):
@@ -310,12 +331,23 @@ def calc_jacc(model):
             if jk > m:
                 m = jk
                 b_tr = tr
-        print(i, m, b_tr)
+        #print (i, m, b_tr)
         avg.append(m)
         trs.append(b_tr)
 
     score = sum(avg) / 10.0
+    
+    img = None
+    msk = None
+    prd = None
+    t_msk = None
+    t_prd = None
+    b_tr = None
+    del(img,msk,prd,t_msk,t_prd,b_tr)
+    gc.collect()
+    
     return score, trs
+
 
 
 def mask_for_polygons(polygons, im_size):
@@ -330,17 +362,20 @@ def mask_for_polygons(polygons, im_size):
                  for pi in poly.interiors]
     cv2.fillPoly(img_mask, exteriors, 1)
     cv2.fillPoly(img_mask, interiors, 0)
+    
+    int_coords = None
+    exteriors = None
+    interiors = None
+    del(int_coords,exteriors,interiors)
+    gc.collect()
     return img_mask
-
 
 def mask_to_polygons(mask, epsilon=5, min_area=1.):
     # __author__ = Konstantin Lopuhin
     # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
 
     # first, find contours with cv2: it's much faster than shapely
-    image, contours, hierarchy = cv2.findContours(
-        ((mask == 1) * 255).astype(np.uint8),
-        cv2.RETR_CCOMP, cv2.CHAIN_APPROX_TC89_KCOS)
+    contours, hierarchy = cv2.findContours(((mask == 1) * 255).astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_TC89_KCOS)
     # create approximate contours to have reasonable submission size
     approx_contours = [cv2.approxPolyDP(cnt, epsilon, True)
                        for cnt in contours]
@@ -375,7 +410,6 @@ def mask_to_polygons(mask, epsilon=5, min_area=1.):
             all_polygons = MultiPolygon([all_polygons])
     return all_polygons
 
-
 def get_scalers(im_size, x_max, y_min):
     # __author__ = Konstantin Lopuhin
     # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
@@ -385,29 +419,35 @@ def get_scalers(im_size, x_max, y_min):
     h_ = 1.0 * h * (h / (h + 1))
     return w_ / x_max, h_ / y_min
 
-
 def train_net():
-    x_val, y_val = np.load(f'{inDir}/x_tmp_%d.npy' % N_Cls), np.load(f'{inDir}/y_tmp_%d.npy' % N_Cls)
-    img = np.load(f'{inDir}/x_trn_%d.npy' % N_Cls)
-    msk = np.load(f'{inDir}/y_trn_%d.npy' % N_Cls)
+    print ("start train net")
+    x_val, y_val = np.load(f'{inDir}/unet_8_band/data/x_tmp_%d.npy' % N_Cls), np.load(f'{inDir}/unet_8_band/data/y_tmp_%d.npy' % N_Cls)
+    img = np.load(f'{inDir}/unet_8_band/data/x_trn_%d.npy' % N_Cls)
+    msk = np.load(f'{inDir}/unet_8_band/data/y_trn_%d.npy' % N_Cls)
 
     x_trn, y_trn = get_patches(img, msk)
 
     model = get_unet()
-    model.load_weights('weights/unet_10_jk0.7878')
-    model_checkpoint = ModelCheckpoint('weights/unet_tmp.hdf5', monitor='loss', save_best_only=True)
+    #model.load_weights('../input/trained-weight/unet_10_jk0.7565')
+    model_checkpoint = ModelCheckpoint('unet_tmp.hdf5', monitor='loss', save_best_only=True)
     for i in range(1):
-        model.fit(x_trn, y_trn, batch_size=64, nb_epoch=1, verbose=1, shuffle=True,
+        model.fit(x_trn, y_trn, batch_size=64, epochs=10, verbose=1, shuffle=True,
                   callbacks=[model_checkpoint], validation_data=(x_val, y_val))
         del x_trn
         del y_trn
-        x_trn, y_trn = get_patches(img, msk)
+        #x_trn, y_trn = get_patches(img, msk)
         score, trs = calc_jacc(model)
-        print('val jk', score)
-        model.save_weights('weights/unet_10_jk%.4f' % score)
-
-    return model
-
+        print ('val jk'+ str(score))
+        model.save_weights('unet_10_jk%.4f' % score)
+    
+    x_val = None
+    y_val = None
+    x_trn = None
+    y_trn = None
+    del(x_val,y_val,x_trn,y_trn)
+    gc.collect()
+    
+    return model, score, trs
 
 def predict_id(id, model, trs):
     img = M(id)
@@ -427,28 +467,32 @@ def predict_id(id, model, trs):
         for j in range(tmp.shape[0]):
             prd[:, i * ISZ:(i + 1) * ISZ, j * ISZ:(j + 1) * ISZ] = tmp[j]
 
-    # trs = [0.4, 0.1, 0.4, 0.3, 0.3, 0.5, 0.3, 0.6, 0.1, 0.1]
+    trs = [0.4, 0.1, 0.4, 0.3, 0.3, 0.5, 0.3, 0.6, 0.1, 0.1]
     for i in range(N_Cls):
         prd[i] = prd[i] > trs[i]
 
     return prd[:, :img.shape[0], :img.shape[1]]
 
 
+
 def predict_test(model, trs):
+    print ("predict test")
     for i, id in enumerate(sorted(set(SB['ImageId'].tolist()))):
         msk = predict_id(id, model, trs)
-        np.save('msk/10_%s' % id, msk)
-        if i % 100 == 0: print(i, id)
+        np.save(f'{inDir}/unet_8_band/msk/10_%s' % id, msk)
+        #if i % 100 == 0: print (i, id)
+
 
 
 def make_submit():
+    print ("make submission file")
     df = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
-    print(df.head())
+    print (df.head())
     for idx, row in df.iterrows():
         id = row[0]
         kls = row[1] - 1
 
-        msk = np.load('msk/10_%s.npy' % id)[kls]
+        msk = np.load(f'{inDir}/unet_8_band/msk/10_%s.npy' % id)[kls]
         pred_polygons = mask_to_polygons(msk)
         x_max = GS.loc[GS['ImageId'] == id, 'Xmax'].as_matrix()[0]
         y_min = GS.loc[GS['ImageId'] == id, 'Ymin'].as_matrix()[0]
@@ -459,39 +503,69 @@ def make_submit():
                                                       origin=(0, 0, 0))
 
         df.iloc[idx, 2] = shapely.wkt.dumps(scaled_pred_polygons)
-        if idx % 100 == 0: print(idx)
-    print(df.head())
-    df.to_csv('subm/1.csv', index=False)
+        if idx % 1000 == 0: print (idx)
+    print (df.head())
+    df.to_csv(f'{inDir}/unet_8_band/subm/1.csv', index=False)
+
 
 
 def check_predict(id='6120_2_3'):
     model = get_unet()
-    model.load_weights('weights/unet_10_jk0.7878')
+    model.load_weights(f'{inDir}/unet_8_band/working/unet_10_jk%.4f' % score)
 
     msk = predict_id(id, model, [0.4, 0.1, 0.4, 0.3, 0.3, 0.5, 0.3, 0.6, 0.1, 0.1])
-    img = M(id)
+    m = M(id)
+    print(m.shape)
+    class_list = ["Buildings", "Misc.Manmade structures" ,"Road",\
+                  "Track","Trees","Crops","Waterway","Standing water",\
+                  "Vehicle Large","Vehicle Small"]
+    
+    img = np.zeros((m.shape[0],m.shape[1],3))
+    img[:,:,0] = m[:,:,4] #red
+    img[:,:,1] = m[:,:,2] #green
+    img[:,:,2] = m[:,:,1] #blue
+    for i in range(10):
+        plt.figure(figsize=(20,20))
+        ax1 = plt.subplot(131)
+        ax1.set_title('image ID:6120_2_3')
+        ax1.imshow(stretch_n(img))
+        ax2 = plt.subplot(132)
+        ax2.set_title("predict "+ class_list[i] +" pixels")
+        ax2.imshow(msk[i], cmap=plt.get_cmap('gray'))
+        ax3 = plt.subplot(133)
+        ax3.set_title("predict " + class_list[i] + " polygones")
+        ax3.imshow(mask_for_polygons(mask_to_polygons(msk[i], epsilon=1), img.shape[:2]), cmap=plt.get_cmap('gray'))
+        plt.show()
 
-    plt.figure()
-    ax1 = plt.subplot(131)
-    ax1.set_title('image ID:6120_2_3')
-    ax1.imshow(img[:, :, 5], cmap=plt.get_cmap('gist_ncar'))
-    ax2 = plt.subplot(132)
-    ax2.set_title('predict bldg pixels')
-    ax2.imshow(msk[0], cmap=plt.get_cmap('gray'))
-    ax3 = plt.subplot(133)
-    ax3.set_title('predict bldg polygones')
-    ax3.imshow(mask_for_polygons(mask_to_polygons(msk[0], epsilon=1), img.shape[:2]), cmap=plt.get_cmap('gray'))
-
-    plt.show()
 
 
-if __name__ == '__main__':
-    stick_all_train()
-    make_val()
-    model = train_net()
-    score, trs = calc_jacc(model)
-    predict_test(model, trs)
-    make_submit()
+stick_all_train()
+DF = None
+x = None
+y = None
+img = None
+ids = None
+del(DF,x,y,img,ids)
+gc.collect()
 
-    # bonus
-    check_predict()
+
+
+make_val()
+
+
+
+model, score, trs = train_net()
+
+
+
+check_predict('6120_2_2')
+
+
+
+predict_test(model, trs)
+
+img = None
+cnv = None
+del(img,cnv)
+gc.collect()
+
