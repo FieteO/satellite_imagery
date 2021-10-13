@@ -1,153 +1,30 @@
 # https://www.kaggle.com/drn01z3/end-to-end-baseline-with-u-net-keras
-import matplotlib.pyplot as plt
-import numpy as np
-import cv2
-import pandas as pd
-from tensorflow.keras import layers
-from tensorflow.python.keras.backend import concatenate
-from shapely.wkt import loads as wkt_loads
-import tifffile as tiff
 import os
 import random
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, UpSampling2D, Conv2D
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import ModelCheckpoint, LearningRateScheduler
-from tensorflow.keras import backend as K, Sequential
-from sklearn.metrics import jaccard_score
-from shapely.geometry import MultiPolygon, Polygon
-import shapely.wkt
-import shapely.affinity
 from collections import defaultdict
 
-N_Cls = 10
-# inDir = '/home/n01z3/dataset/dstl'
-inDir = 'dataset'
-DF = pd.read_csv(inDir + '/train_wkt_v4.csv')
-GS = pd.read_csv(inDir + '/grid_sizes.csv', names=['ImageId', 'Xmax', 'Ymin'], skiprows=1)
-SB = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
-ISZ = 160
-smooth = 1e-12
+import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import shapely.affinity
+import shapely.wkt
+#from shapely.wkt import loads as wkt_loads
+from shapely.geometry import MultiPolygon, Polygon
+from sklearn.metrics import jaccard_score
 
+from tensorflow.keras import Sequential
+from tensorflow.keras import backend as K
+from tensorflow.keras import layers
+from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.layers import Conv2D, Input, MaxPooling2D, UpSampling2D
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.python.keras.backend import concatenate
 
-def _convert_coordinates_to_raster(coords, img_size, xymax):
-    # __author__ = visoft
-    # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
-    Xmax, Ymax = xymax
-    H, W = img_size
-    W1 = 1.0 * W * W / (W + 1)
-    H1 = 1.0 * H * H / (H + 1)
-    xf = W1 / Xmax
-    yf = H1 / Ymax
-    coords[:, 1] *= yf
-    coords[:, 0] *= xf
-    coords_int = np.round(coords).astype(np.int32)
-    return coords_int
-
-
-def _get_xmax_ymin(grid_sizes_panda, imageId):
-    # __author__ = visoft
-    # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
-    xmax, ymin = grid_sizes_panda[grid_sizes_panda.ImageId == imageId].iloc[0, 1:].astype(float)
-    return (xmax, ymin)
-
-
-def _get_polygon_list(wkt_list_pandas, imageId, cType):
-    # __author__ = visoft
-    # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
-    df_image = wkt_list_pandas[wkt_list_pandas.ImageId == imageId]
-    multipoly_def = df_image[df_image.ClassType == cType].MultipolygonWKT
-    polygonList = None
-    if len(multipoly_def) > 0:
-        assert len(multipoly_def) == 1
-        polygonList = wkt_loads(multipoly_def.values[0])
-    return polygonList
-
-
-def _get_and_convert_contours(polygonList, raster_img_size, xymax):
-    # __author__ = visoft
-    # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
-    perim_list = []
-    interior_list = []
-    if polygonList is None:
-        return None
-    for k in range(len(polygonList)):
-        poly = polygonList[k]
-        perim = np.array(list(poly.exterior.coords))
-        perim_c = _convert_coordinates_to_raster(perim, raster_img_size, xymax)
-        perim_list.append(perim_c)
-        for pi in poly.interiors:
-            interior = np.array(list(pi.coords))
-            interior_c = _convert_coordinates_to_raster(interior, raster_img_size, xymax)
-            interior_list.append(interior_c)
-    return perim_list, interior_list
-
-
-def _plot_mask_from_contours(raster_img_size, contours, class_value=1):
-    # __author__ = visoft
-    # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
-    img_mask = np.zeros(raster_img_size, np.uint8)
-    if contours is None:
-        return img_mask
-    perim_list, interior_list = contours
-    cv2.fillPoly(img_mask, perim_list, class_value)
-    cv2.fillPoly(img_mask, interior_list, 0)
-    return img_mask
-
-
-def generate_mask_for_image_and_class(raster_size, imageId, class_type, grid_sizes_panda=GS, wkt_list_pandas=DF):
-    # __author__ = visoft
-    # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
-    xymax = _get_xmax_ymin(grid_sizes_panda, imageId)
-    polygon_list = _get_polygon_list(wkt_list_pandas, imageId, class_type)
-    contours = _get_and_convert_contours(polygon_list, raster_size, xymax)
-    mask = _plot_mask_from_contours(raster_size, contours, 1)
-    return mask
-
-
-def M(image_id):
-    # __author__ = amaia
-    # https://www.kaggle.com/aamaia/dstl-satellite-imagery-feature-detection/rgb-using-m-bands-example
-    filename = os.path.join(inDir, 'sixteen_band', '{}_M.tif'.format(image_id))
-    img = tiff.imread(filename)
-    img = np.rollaxis(img, 0, 3)
-    return img
-
-
-def stretch_n(bands, lower_percent=5, higher_percent=95):
-    out = np.zeros_like(bands)
-    n = bands.shape[2]
-    for i in range(n):
-        a = 0  # np.min(band)
-        b = 1  # np.max(band)
-        c = np.percentile(bands[:, :, i], lower_percent)
-        d = np.percentile(bands[:, :, i], higher_percent)
-        t = a + (bands[:, :, i] - c) * (b - a) / (d - c)
-        t[t < a] = a
-        t[t > b] = b
-        out[:, :, i] = t
-
-    return out.astype(np.float32)
-
-
-def jaccard_coef(y_true, y_pred):
-    # __author__ = Vladimir Iglovikov
-    intersection = K.sum(y_true * y_pred, axis=[0, -1, -2])
-    sum_ = K.sum(y_true + y_pred, axis=[0, -1, -2])
-
-    jac = (intersection + smooth) / (sum_ - intersection + smooth)
-
-    return K.mean(jac)
-
-
-def jaccard_coef_int(y_true, y_pred):
-    # __author__ = Vladimir Iglovikov
-    y_pred_pos = K.round(K.clip(y_pred, 0, 1))
-
-    intersection = K.sum(y_true * y_pred_pos, axis=[0, -1, -2])
-    sum_ = K.sum(y_true + y_pred, axis=[0, -1, -2])
-    jac = (intersection + smooth) / (sum_ - intersection + smooth)
-    return K.mean(jac)
+from helpers import (generate_mask_for_image_and_class, get_rgb_from_m_band,
+                     jaccard_coef, jaccard_coef_int, mask_for_polygons,
+                     mask_to_polygons, stretch_n, calc_jacc, get_scalers, subset_in_folder)
 
 
 def stick_all_train():
@@ -158,17 +35,23 @@ def stick_all_train():
 
     ids = sorted(DF.ImageId.unique())
     print(len(ids))
+    print(ids)
     for i in range(5):
         for j in range(5):
             id = ids[5 * i + j]
 
-            img = M(id)
+            img = get_rgb_from_m_band(id, band)
             img = stretch_n(img)
             print(img.shape, id, np.amax(img), np.amin(img))
             x[s * i:s * i + s, s * j:s * j + s, :] = img[:s, :s, :]
             for z in range(N_Cls):
                 y[s * i:s * i + s, s * j:s * j + s, z] = generate_mask_for_image_and_class(
-                    (img.shape[0], img.shape[1]), id, z + 1)[:s, :s]
+                    raster_size=(img.shape[0], img.shape[1]),
+                    imageId=id,
+                    class_type=z + 1,
+                    grid_sizes_panda=GS,
+                    wkt_list_pandas=DF
+                )[:s, :s]
 
     print(np.amax(y), np.amin(y))
 
@@ -238,8 +121,6 @@ def get_unet_seq():
 
         layers.Conv2D(512,3,3, activation='relu', padding='same'),
         layers.Conv2D(512,3,3, activation='relu', padding='same'),
-
-
     ])
 
 
@@ -287,105 +168,6 @@ def get_unet():
     return model
 
 
-def calc_jacc(model):
-    img = np.load(f'{inDir}/x_tmp_%d.npy' % N_Cls)
-    msk = np.load(f'{inDir}/y_tmp_%d.npy' % N_Cls)
-
-    prd = model.predict(img, batch_size=4)
-    print(prd.shape, msk.shape)
-    avg, trs = [], []
-
-    for i in range(N_Cls):
-        t_msk = msk[:, i, :, :]
-        t_prd = prd[:, i, :, :]
-        t_msk = t_msk.reshape(msk.shape[0] * msk.shape[2], msk.shape[3])
-        t_prd = t_prd.reshape(msk.shape[0] * msk.shape[2], msk.shape[3])
-
-        m, b_tr = 0, 0
-        for j in range(10):
-            tr = j / 10.0
-            pred_binary_mask = t_prd > tr
-
-            jk = jaccard_similarity_score(t_msk, pred_binary_mask)
-            if jk > m:
-                m = jk
-                b_tr = tr
-        print(i, m, b_tr)
-        avg.append(m)
-        trs.append(b_tr)
-
-    score = sum(avg) / 10.0
-    return score, trs
-
-
-def mask_for_polygons(polygons, im_size):
-    # __author__ = Konstantin Lopuhin
-    # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
-    img_mask = np.zeros(im_size, np.uint8)
-    if not polygons:
-        return img_mask
-    int_coords = lambda x: np.array(x).round().astype(np.int32)
-    exteriors = [int_coords(poly.exterior.coords) for poly in polygons]
-    interiors = [int_coords(pi.coords) for poly in polygons
-                 for pi in poly.interiors]
-    cv2.fillPoly(img_mask, exteriors, 1)
-    cv2.fillPoly(img_mask, interiors, 0)
-    return img_mask
-
-
-def mask_to_polygons(mask, epsilon=5, min_area=1.):
-    # __author__ = Konstantin Lopuhin
-    # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
-
-    # first, find contours with cv2: it's much faster than shapely
-    image, contours, hierarchy = cv2.findContours(
-        ((mask == 1) * 255).astype(np.uint8),
-        cv2.RETR_CCOMP, cv2.CHAIN_APPROX_TC89_KCOS)
-    # create approximate contours to have reasonable submission size
-    approx_contours = [cv2.approxPolyDP(cnt, epsilon, True)
-                       for cnt in contours]
-    if not contours:
-        return MultiPolygon()
-    # now messy stuff to associate parent and child contours
-    cnt_children = defaultdict(list)
-    child_contours = set()
-    assert hierarchy.shape[0] == 1
-    # http://docs.opencv.org/3.1.0/d9/d8b/tutorial_py_contours_hierarchy.html
-    for idx, (_, _, _, parent_idx) in enumerate(hierarchy[0]):
-        if parent_idx != -1:
-            child_contours.add(idx)
-            cnt_children[parent_idx].append(approx_contours[idx])
-    # create actual polygons filtering by area (removes artifacts)
-    all_polygons = []
-    for idx, cnt in enumerate(approx_contours):
-        if idx not in child_contours and cv2.contourArea(cnt) >= min_area:
-            assert cnt.shape[1] == 1
-            poly = Polygon(
-                shell=cnt[:, 0, :],
-                holes=[c[:, 0, :] for c in cnt_children.get(idx, [])
-                       if cv2.contourArea(c) >= min_area])
-            all_polygons.append(poly)
-    # approximating polygons might have created invalid ones, fix them
-    all_polygons = MultiPolygon(all_polygons)
-    if not all_polygons.is_valid:
-        all_polygons = all_polygons.buffer(0)
-        # Sometimes buffer() converts a simple Multipolygon to just a Polygon,
-        # need to keep it a Multi throughout
-        if all_polygons.type == 'Polygon':
-            all_polygons = MultiPolygon([all_polygons])
-    return all_polygons
-
-
-def get_scalers(im_size, x_max, y_min):
-    # __author__ = Konstantin Lopuhin
-    # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
-    h, w = im_size  # they are flipped so that mask_for_polygons works correctly
-    h, w = float(h), float(w)
-    w_ = 1.0 * w * (w / (w + 1))
-    h_ = 1.0 * h * (h / (h + 1))
-    return w_ / x_max, h_ / y_min
-
-
 def train_net():
     x_val, y_val = np.load(f'{inDir}/x_tmp_%d.npy' % N_Cls), np.load(f'{inDir}/y_tmp_%d.npy' % N_Cls)
     img = np.load(f'{inDir}/x_trn_%d.npy' % N_Cls)
@@ -410,7 +192,7 @@ def train_net():
 
 
 def predict_id(id, model, trs):
-    img = M(id)
+    img = get_rgb_from_m_band(id)
     x = stretch_n(img)
 
     cnv = np.zeros((960, 960, 8)).astype(np.float32)
@@ -469,7 +251,7 @@ def check_predict(id='6120_2_3'):
     model.load_weights('weights/unet_10_jk0.7878')
 
     msk = predict_id(id, model, [0.4, 0.1, 0.4, 0.3, 0.3, 0.5, 0.3, 0.6, 0.1, 0.1])
-    img = M(id)
+    img = get_rgb_from_m_band(id)
 
     plt.figure()
     ax1 = plt.subplot(131)
@@ -486,6 +268,15 @@ def check_predict(id='6120_2_3'):
 
 
 if __name__ == '__main__':
+    N_Cls = 10
+    inDir = 'dataset'
+    band = 'sixteen_band'
+    DF = pd.read_csv(inDir + '/train_wkt_v4.csv')
+    DF = subset_in_folder(DF, f'{inDir}/{band}')
+    GS = pd.read_csv(inDir + '/grid_sizes.csv', names=['ImageId', 'Xmax', 'Ymin'], skiprows=1)
+    SB = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
+    ISZ = 160
+    smooth = 1e-12
     stick_all_train()
     make_val()
     model = train_net()
@@ -493,5 +284,5 @@ if __name__ == '__main__':
     predict_test(model, trs)
     make_submit()
 
-    # bonus
-    check_predict()
+    # # bonus
+    # check_predict()
