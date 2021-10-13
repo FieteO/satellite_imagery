@@ -40,7 +40,7 @@ def stick_all_train():
         for j in range(5):
             id = ids[5 * i + j]
 
-            img = get_rgb_from_m_band(id, band)
+            img = get_rgb_from_m_band(id)
             img = stretch_n(img)
             print(img.shape, id, np.amax(img), np.amin(img))
             x[s * i:s * i + s, s * j:s * j + s, :] = img[:s, :s, :]
