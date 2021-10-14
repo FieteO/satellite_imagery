@@ -1,6 +1,7 @@
 import numpy as np
 import os
 import cv2
+import random
 from numpy.lib.arraysetops import unique
 
 def _convert_coordinates_to_raster(coords, img_size, xymax):
@@ -47,6 +48,39 @@ def calc_jacc(model, N_Cls = 10):
 
     score = sum(avg) / 10.0
     return score, trs
+
+def get_patches(img, msk, amt=10000, aug=True, ISZ=160, N_Cls=10):
+    is2 = int(1.0 * ISZ)
+    xm, ym = img.shape[0] - is2, img.shape[1] - is2
+
+    x, y = [], []
+
+    tr = [0.4, 0.1, 0.1, 0.15, 0.3, 0.95, 0.1, 0.05, 0.001, 0.005]
+    for i in range(amt):
+        xc = random.randint(0, xm)
+        yc = random.randint(0, ym)
+
+        im = img[xc:xc + is2, yc:yc + is2]
+        ms = msk[xc:xc + is2, yc:yc + is2]
+
+        for j in range(N_Cls):
+            sm = np.sum(ms[:, :, j])
+            if 1.0 * sm / is2 ** 2 > tr[j]:
+                if aug:
+                    if random.uniform(0, 1) > 0.5:
+                        im = im[::-1]
+                        ms = ms[::-1]
+                    if random.uniform(0, 1) > 0.5:
+                        im = im[:, ::-1]
+                        ms = ms[:, ::-1]
+
+                x.append(im)
+                y.append(ms)
+
+    x, y = 2 * np.transpose(x, (0, 3, 1, 2)) - 1, np.transpose(y, (0, 3, 1, 2))
+    print(x.shape, y.shape, np.amax(x), np.amin(x), np.amax(y), np.amin(y))
+    return x, y
+
 
 def _get_xmax_ymin(grid_sizes_panda, imageId):
     # __author__ = visoft

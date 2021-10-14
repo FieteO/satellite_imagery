@@ -8,3 +8,17 @@ The Jaccard coefficient measures similarity between finite sample sets, and is d
 ![Ground truth vs. predicted bounding boxes on a stop sign](readme_images/jaccard.jpeg)  
 ![Areas of overlap and union](readme_images/area.png)  
 ![Comparison of results](readme_images/intersection.png)  
+
+## Getting started
+
+### Creating a virtual environment
+``` bash
+# Create
+python3 -m venv .satenv
+
+# Source
+source .satenv/bin/activate
+
+# Install requirements
+pip install -r requirements
+```

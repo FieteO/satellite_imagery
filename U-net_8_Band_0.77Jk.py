@@ -14,8 +14,6 @@ import shapely.affinity
 import shapely.wkt
 import tensorflow as tf
 import tifffile as tiff
-#from sklearn.metrics import jaccard_score
-
 from shapely.geometry import MultiPolygon, Polygon
 # from shapely.wkt import loads as wkt_loads
 from sklearn.metrics import jaccard_score
@@ -26,10 +24,15 @@ from tensorflow.keras.layers import *
 from tensorflow.keras.models import *
 from tensorflow.keras.optimizers import Adam
 
+#from sklearn.metrics import jaccard_score
+
+
 warnings.filterwarnings("ignore")
 
-from helpers import (generate_mask_for_image_and_class, get_rgb_from_m_band,
-                     jaccard_coef, jaccard_coef_int, stretch_n)
+from helpers import (calc_jacc, generate_mask_for_image_and_class, get_patches,
+                     get_rgb_from_m_band, get_scalers, jaccard_coef,
+                     jaccard_coef_int, mask_for_polygons, mask_to_polygons,
+                     stretch_n)
 
 N_Cls = 10
 inDir = 'dataset'
@@ -73,47 +76,6 @@ def stick_all_train():
 
     np.save(f'{inDir}/unet_8_band/data/x_trn_%d' % N_Cls, x)
     np.save(f'{inDir}/unet_8_band/data/y_trn_%d' % N_Cls, y)
-
-
-
-def get_patches(img, msk, amt=2000, aug=True):
-    is2 = int(1.0 * ISZ)
-    xm, ym = img.shape[0] - is2, img.shape[1] - is2
-
-    x, y = [], []
-
-    tr = [0.4, 0.1, 0.1, 0.15, 0.3, 0.95, 0.1, 0.05, 0.001, 0.005]
-    for i in range(amt):
-        xc = random.randint(0, xm)
-        yc = random.randint(0, ym)
-
-        im = img[xc:xc + is2, yc:yc + is2]
-        ms = msk[xc:xc + is2, yc:yc + is2]
-
-        for j in range(N_Cls):
-            sm = np.sum(ms[:, :, j])
-            if 1.0 * sm / is2 ** 2 > tr[j]:
-                if aug:
-                    if random.uniform(0, 1) > 0.5:
-                        im = im[::-1]
-                        ms = ms[::-1]
-                    if random.uniform(0, 1) > 0.5:
-                        im = im[:, ::-1]
-                        ms = ms[:, ::-1]
-
-                x.append(im)
-                y.append(ms)
-
-    x, y = 2 * np.transpose(x, (0, 3, 1, 2)) - 1, np.transpose(y, (0, 3, 1, 2))
-    print (x.shape, y.shape, np.amax(x), np.amin(x), np.amax(y), np.amin(y))
-    im = None
-    ms = None
-    xc = None
-    yc = None
-    del(im,ms,xc,yc)
-    gc.collect()
-    return x, y
-
 
 
 def make_val():
@@ -184,119 +146,6 @@ def get_unet():
     #model.compile(optimizer=Adam(lr=1e-4), loss = jaccard_loss, metrics=[jaccard_coef, jaccard_coef_int, 'accuracy'])
 
     return model
-
-
-
-def calc_jacc(model):
-    img = np.load(f'{inDir}/unet_8_band/data/x_tmp_%d.npy' % N_Cls)
-    msk = np.load(f'{inDir}/unet_8_band/data/y_tmp_%d.npy' % N_Cls)
-
-    prd = model.predict(img, batch_size=4)
-    print (prd.shape, msk.shape)
-    avg, trs = [], []
-
-    for i in range(N_Cls):
-        t_msk = msk[:, i, :, :]
-        t_prd = prd[:, i, :, :]
-        t_msk = t_msk.reshape(msk.shape[0] * msk.shape[2], msk.shape[3])
-        t_prd = t_prd.reshape(msk.shape[0] * msk.shape[2], msk.shape[3])
-
-        m, b_tr = 0, 0
-        for j in range(10):
-            tr = j / 10.0
-            pred_binary_mask = t_prd > tr
-
-            jk = jaccard_score(t_msk, pred_binary_mask)
-            if jk > m:
-                m = jk
-                b_tr = tr
-        #print (i, m, b_tr)
-        avg.append(m)
-        trs.append(b_tr)
-
-    score = sum(avg) / 10.0
-    
-    img = None
-    msk = None
-    prd = None
-    t_msk = None
-    t_prd = None
-    b_tr = None
-    del(img,msk,prd,t_msk,t_prd,b_tr)
-    gc.collect()
-    
-    return score, trs
-
-
-
-def mask_for_polygons(polygons, im_size):
-    # __author__ = Konstantin Lopuhin
-    # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
-    img_mask = np.zeros(im_size, np.uint8)
-    if not polygons:
-        return img_mask
-    int_coords = lambda x: np.array(x).round().astype(np.int32)
-    exteriors = [int_coords(poly.exterior.coords) for poly in polygons]
-    interiors = [int_coords(pi.coords) for poly in polygons
-                 for pi in poly.interiors]
-    cv2.fillPoly(img_mask, exteriors, 1)
-    cv2.fillPoly(img_mask, interiors, 0)
-    
-    int_coords = None
-    exteriors = None
-    interiors = None
-    del(int_coords,exteriors,interiors)
-    gc.collect()
-    return img_mask
-
-def mask_to_polygons(mask, epsilon=5, min_area=1.):
-    # __author__ = Konstantin Lopuhin
-    # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
-
-    # first, find contours with cv2: it's much faster than shapely
-    contours, hierarchy = cv2.findContours(((mask == 1) * 255).astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_TC89_KCOS)
-    # create approximate contours to have reasonable submission size
-    approx_contours = [cv2.approxPolyDP(cnt, epsilon, True)
-                       for cnt in contours]
-    if not contours:
-        return MultiPolygon()
-    # now messy stuff to associate parent and child contours
-    cnt_children = defaultdict(list)
-    child_contours = set()
-    assert hierarchy.shape[0] == 1
-    # http://docs.opencv.org/3.1.0/d9/d8b/tutorial_py_contours_hierarchy.html
-    for idx, (_, _, _, parent_idx) in enumerate(hierarchy[0]):
-        if parent_idx != -1:
-            child_contours.add(idx)
-            cnt_children[parent_idx].append(approx_contours[idx])
-    # create actual polygons filtering by area (removes artifacts)
-    all_polygons = []
-    for idx, cnt in enumerate(approx_contours):
-        if idx not in child_contours and cv2.contourArea(cnt) >= min_area:
-            assert cnt.shape[1] == 1
-            poly = Polygon(
-                shell=cnt[:, 0, :],
-                holes=[c[:, 0, :] for c in cnt_children.get(idx, [])
-                       if cv2.contourArea(c) >= min_area])
-            all_polygons.append(poly)
-    # approximating polygons might have created invalid ones, fix them
-    all_polygons = MultiPolygon(all_polygons)
-    if not all_polygons.is_valid:
-        all_polygons = all_polygons.buffer(0)
-        # Sometimes buffer() converts a simple Multipolygon to just a Polygon,
-        # need to keep it a Multi throughout
-        if all_polygons.type == 'Polygon':
-            all_polygons = MultiPolygon([all_polygons])
-    return all_polygons
-
-def get_scalers(im_size, x_max, y_min):
-    # __author__ = Konstantin Lopuhin
-    # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
-    h, w = im_size  # they are flipped so that mask_for_polygons works correctly
-    h, w = float(h), float(w)
-    w_ = 1.0 * w * (w / (w + 1))
-    h_ = 1.0 * h * (h / (h + 1))
-    return w_ / x_max, h_ / y_min
 
 def train_net():
     print ("start train net")

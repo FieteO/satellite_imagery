@@ -1,0 +1,7 @@
+pandas
+numpy==1.19.2
+tensorflow-cpu==2.6.0
+opencv-python
+matplotlib
+shapely
+tifffile

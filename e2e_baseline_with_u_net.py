@@ -1,6 +1,6 @@
 # https://www.kaggle.com/drn01z3/end-to-end-baseline-with-u-net-keras
 import os
-import random
+
 from collections import defaultdict
 
 import cv2
@@ -9,9 +9,9 @@ import numpy as np
 import pandas as pd
 import shapely.affinity
 import shapely.wkt
-#from shapely.wkt import loads as wkt_loads
-from shapely.geometry import MultiPolygon, Polygon
-from sklearn.metrics import jaccard_score
+# from shapely.wkt import loads as wkt_loads
+# from shapely.geometry import MultiPolygon, Polygon
+# from sklearn.metrics import jaccard_score
 
 from tensorflow.keras import Sequential
 from tensorflow.keras import backend as K
@@ -24,7 +24,7 @@ from tensorflow.python.keras.backend import concatenate
 
 from helpers import (generate_mask_for_image_and_class, get_rgb_from_m_band,
                      jaccard_coef, jaccard_coef_int, mask_for_polygons,
-                     mask_to_polygons, stretch_n, calc_jacc, get_scalers, subset_in_folder)
+                     mask_to_polygons, stretch_n, calc_jacc, get_scalers, subset_in_folder, get_patches)
 
 
 def stick_all_train():
@@ -39,7 +39,7 @@ def stick_all_train():
     for i in range(5):
         for j in range(5):
             id = ids[5 * i + j]
-
+            print(id)
             img = get_rgb_from_m_band(id)
             img = stretch_n(img)
             print(img.shape, id, np.amax(img), np.amin(img))
@@ -57,39 +57,6 @@ def stick_all_train():
 
     np.save(f'{inDir}/x_trn_%d' % N_Cls, x)
     np.save(f'{inDir}/y_trn_%d' % N_Cls, y)
-
-
-def get_patches(img, msk, amt=10000, aug=True):
-    is2 = int(1.0 * ISZ)
-    xm, ym = img.shape[0] - is2, img.shape[1] - is2
-
-    x, y = [], []
-
-    tr = [0.4, 0.1, 0.1, 0.15, 0.3, 0.95, 0.1, 0.05, 0.001, 0.005]
-    for i in range(amt):
-        xc = random.randint(0, xm)
-        yc = random.randint(0, ym)
-
-        im = img[xc:xc + is2, yc:yc + is2]
-        ms = msk[xc:xc + is2, yc:yc + is2]
-
-        for j in range(N_Cls):
-            sm = np.sum(ms[:, :, j])
-            if 1.0 * sm / is2 ** 2 > tr[j]:
-                if aug:
-                    if random.uniform(0, 1) > 0.5:
-                        im = im[::-1]
-                        ms = ms[::-1]
-                    if random.uniform(0, 1) > 0.5:
-                        im = im[:, ::-1]
-                        ms = ms[:, ::-1]
-
-                x.append(im)
-                y.append(ms)
-
-    x, y = 2 * np.transpose(x, (0, 3, 1, 2)) - 1, np.transpose(y, (0, 3, 1, 2))
-    print(x.shape, y.shape, np.amax(x), np.amin(x), np.amax(y), np.amin(y))
-    return x, y
 
 
 def make_val():
@@ -144,6 +111,8 @@ def get_unet():
 
     conv5 = Conv2D(512, 3, 3, activation='relu', padding='same')(pool4)
     conv5 = Conv2D(512, 3, 3, activation='relu', padding='same')(conv5)
+    # Dimension 0 in both shapes must be equal, but are 2 and 1. Shapes are [2,512] and [1,256]. for '{{node tf.keras.backend.concatenate/concat}} = ConcatV2[N=2, T=DT_FLOAT, Tidx=DT_INT32](Placeholder, Placeholder_1, tf.keras.backend.concatenate/concat/axis)'
+    # with input shapes: [?,2,2,512], [?,1,1,256], [] and with computed input tensors: input[2] = <1>.
     up6 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], axis=1)
     # up6 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], mode='concat', concat_axis=1)
     conv6 = Conv2D(256, 3, 3, activation='relu', padding='same')(up6)
