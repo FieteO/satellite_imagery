@@ -22,6 +22,7 @@ from tensorflow.keras.layers import Conv2D, Input, MaxPooling2D, UpSampling2D
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.python.keras.backend import concatenate
+from tensorflow.python.keras.engine.training import concat
 
 from helpers import (generate_mask_for_image_and_class, get_rgb_from_m_band,
                      jaccard_coef, jaccard_coef_int, mask_for_polygons,
@@ -31,7 +32,7 @@ from helpers import (generate_mask_for_image_and_class, get_rgb_from_m_band,
 def stick_all_train():
     """Create a training set"""
 
-    if not x_train_path.exists() and y_train_path.exists():
+    if not x_train_path.exists() or not y_train_path.exists():
         s = 835
 
         x = np.zeros((5 * s, 5 * s, 8))
@@ -66,15 +67,39 @@ def stick_all_train():
 
 def make_val():
     """Create a validation set"""
-    if not x_val_path and y_val_path.exists():
-        img = np.load(x_val_path)
-        msk = np.load(y_val_path)
+    if not x_val_path.exists() or not y_val_path.exists():
+        img = np.load(x_train_path)
+        msk = np.load(y_train_path)
         x, y = get_patches(img, msk, amt=3000)
 
         np.save(x_val_path, x)
         np.save(y_val_path, y)
     else:
         print('Validation dataset already exists, skipping.')
+
+def train_net():
+    x_val = np.load(x_val_path),
+    y_val = np.load(y_val_path)
+    img = np.load(x_train_path)
+    msk = np.load(y_train_path)
+
+    x_trn, y_trn = get_patches(img, msk)
+
+    model = get_unet()
+    model.load_weights('weights/unet_10_jk0.7878')
+    model_checkpoint = ModelCheckpoint('weights/unet_tmp.hdf5', monitor='loss', save_best_only=True)
+    for i in range(1):
+        model.fit(x_trn, y_trn, batch_size=64, nb_epoch=1, verbose=1, shuffle=True,
+                  callbacks=[model_checkpoint], validation_data=(x_val, y_val))
+        del x_trn
+        del y_trn
+        x_trn, y_trn = get_patches(img, msk)
+        score, trs = calc_jacc(model)
+        print('val jk', score)
+        model.save_weights('weights/unet_10_jk%.4f' % score)
+
+    return model
+
 
 def get_unet_seq():
     model = Sequential([
@@ -122,7 +147,8 @@ def get_unet():
     conv5 = Conv2D(512, 3, 3, activation='relu', padding='same')(conv5)
     # Dimension 0 in both shapes must be equal, but are 2 and 1. Shapes are [2,512] and [1,256]. for '{{node tf.keras.backend.concatenate/concat}} = ConcatV2[N=2, T=DT_FLOAT, Tidx=DT_INT32](Placeholder, Placeholder_1, tf.keras.backend.concatenate/concat/axis)'
     # with input shapes: [?,2,2,512], [?,1,1,256], [] and with computed input tensors: input[2] = <1>.
-    up6 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], axis=1)
+    up6 = concat([UpSampling2D(size=(2, 2))(conv5), conv4], axis=0)
+    # up6 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], axis=1)
     # up6 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], mode='concat', concat_axis=1)
     conv6 = Conv2D(256, 3, 3, activation='relu', padding='same')(up6)
     conv6 = Conv2D(256, 3, 3, activation='relu', padding='same')(conv6)
@@ -144,30 +170,6 @@ def get_unet():
     model = Model(input=inputs, output=conv10)
     model.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=[jaccard_coef, jaccard_coef_int, 'accuracy'])
     return model
-
-
-def train_net():
-    x_val, y_val = np.load(f'{inDir}/x_tmp_%d.npy' % N_Cls), np.load(f'{inDir}/y_tmp_%d.npy' % N_Cls)
-    img = np.load(f'{inDir}/x_trn_%d.npy' % N_Cls)
-    msk = np.load(f'{inDir}/y_trn_%d.npy' % N_Cls)
-
-    x_trn, y_trn = get_patches(img, msk)
-
-    model = get_unet()
-    model.load_weights('weights/unet_10_jk0.7878')
-    model_checkpoint = ModelCheckpoint('weights/unet_tmp.hdf5', monitor='loss', save_best_only=True)
-    for i in range(1):
-        model.fit(x_trn, y_trn, batch_size=64, nb_epoch=1, verbose=1, shuffle=True,
-                  callbacks=[model_checkpoint], validation_data=(x_val, y_val))
-        del x_trn
-        del y_trn
-        x_trn, y_trn = get_patches(img, msk)
-        score, trs = calc_jacc(model)
-        print('val jk', score)
-        model.save_weights('weights/unet_10_jk%.4f' % score)
-
-    return model
-
 
 def predict_id(id, model, trs):
     img = get_rgb_from_m_band(id)
@@ -261,8 +263,8 @@ if __name__ == '__main__':
     # path to train file that contains the mask of the image
     # that is: ...
     y_train_path = Path(f'{inDir}/y_trn_{N_Cls}.npy')
-    x_val_path   = Path(f'{inDir}/x_tmp_{N_Cls}.npy')
-    y_val_path   = Path(f'{inDir}/y_tmp_{N_Cls}.npy')
+    x_val_path   = Path(f'{inDir}/x_val_{N_Cls}.npy')
+    y_val_path   = Path(f'{inDir}/y_val_{N_Cls}.npy')
 
     stick_all_train()
     make_val()
