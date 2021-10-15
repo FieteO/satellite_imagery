@@ -1,5 +1,6 @@
 # https://www.kaggle.com/drn01z3/end-to-end-baseline-with-u-net-keras
 import os
+from pathlib import Path
 
 from collections import defaultdict
 
@@ -28,44 +29,52 @@ from helpers import (generate_mask_for_image_and_class, get_rgb_from_m_band,
 
 
 def stick_all_train():
-    s = 835
+    """Create a training set"""
 
-    x = np.zeros((5 * s, 5 * s, 8))
-    y = np.zeros((5 * s, 5 * s, N_Cls))
+    if not x_train_path.exists() and y_train_path.exists():
+        s = 835
 
-    ids = sorted(DF.ImageId.unique())
-    print(len(ids))
-    print(ids)
-    for i in range(5):
-        for j in range(5):
-            id = ids[5 * i + j]
-            print(id)
-            img = get_rgb_from_m_band(id)
-            img = stretch_n(img)
-            print(img.shape, id, np.amax(img), np.amin(img))
-            x[s * i:s * i + s, s * j:s * j + s, :] = img[:s, :s, :]
-            for z in range(N_Cls):
-                y[s * i:s * i + s, s * j:s * j + s, z] = generate_mask_for_image_and_class(
-                    raster_size=(img.shape[0], img.shape[1]),
-                    imageId=id,
-                    class_type=z + 1,
-                    grid_sizes_panda=GS,
-                    wkt_list_pandas=DF
-                )[:s, :s]
+        x = np.zeros((5 * s, 5 * s, 8))
+        y = np.zeros((5 * s, 5 * s, N_Cls))
 
-    print(np.amax(y), np.amin(y))
+        ids = sorted(DF.ImageId.unique())
+        print(len(ids))
+        print(ids)
+        for i in range(5):
+            for j in range(5):
+                id = ids[5 * i + j]
+                print(id)
+                img = get_rgb_from_m_band(id)
+                img = stretch_n(img)
+                print(img.shape, id, np.amax(img), np.amin(img))
+                x[s * i:s * i + s, s * j:s * j + s, :] = img[:s, :s, :]
+                for z in range(N_Cls):
+                    y[s * i:s * i + s, s * j:s * j + s, z] = generate_mask_for_image_and_class(
+                        raster_size=(img.shape[0], img.shape[1]),
+                        imageId=id,
+                        class_type=z + 1,
+                        grid_sizes_panda=GS,
+                        wkt_list_pandas=DF
+                    )[:s, :s]
 
-    np.save(f'{inDir}/x_trn_%d' % N_Cls, x)
-    np.save(f'{inDir}/y_trn_%d' % N_Cls, y)
+        print(np.amax(y), np.amin(y))
 
+        np.save(x_train_path, x)
+        np.save(y_train_path, y)
+    else:
+        print('Traing dataset already exists, skipping.')
 
 def make_val():
-    img = np.load(f'{inDir}/x_trn_%d.npy' % N_Cls)
-    msk = np.load(f'{inDir}/y_trn_%d.npy' % N_Cls)
-    x, y = get_patches(img, msk, amt=3000)
+    """Create a validation set"""
+    if not x_val_path and y_val_path.exists():
+        img = np.load(x_val_path)
+        msk = np.load(y_val_path)
+        x, y = get_patches(img, msk, amt=3000)
 
-    np.save(f'{inDir}/x_tmp_%d' % N_Cls, x)
-    np.save(f'{inDir}/y_tmp_%d' % N_Cls, y)
+        np.save(x_val_path, x)
+        np.save(y_val_path, y)
+    else:
+        print('Validation dataset already exists, skipping.')
 
 def get_unet_seq():
     model = Sequential([
@@ -246,6 +255,15 @@ if __name__ == '__main__':
     SB = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
     ISZ = 160
     smooth = 1e-12
+
+    # path to train file that contains the images
+    x_train_path = Path(f'{inDir}/x_trn_{N_Cls}.npy')
+    # path to train file that contains the mask of the image
+    # that is: ...
+    y_train_path = Path(f'{inDir}/y_trn_{N_Cls}.npy')
+    x_val_path   = Path(f'{inDir}/x_tmp_{N_Cls}.npy')
+    y_val_path   = Path(f'{inDir}/y_tmp_{N_Cls}.npy')
+
     stick_all_train()
     make_val()
     model = train_net()
