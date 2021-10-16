@@ -21,4 +21,7 @@ source .satenv/bin/activate
 
 # Install requirements
 pip install -r requirements
+
+# Install a jupyter kernel
+ipython kernel install --user --name=.satenv
 ```

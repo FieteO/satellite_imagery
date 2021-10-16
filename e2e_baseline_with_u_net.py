@@ -29,36 +29,48 @@ from helpers import (generate_mask_for_image_and_class, get_rgb_from_m_band,
                      mask_to_polygons, stretch_n, calc_jacc, get_scalers, subset_in_folder, get_patches)
 
 
-def stick_all_train():
-    """Create a training set"""
+def generate_training_files():
+    """Saves the images and masks of the 25 train files as numpy arrays.
+
+    The images initially have slightly different sizes and are therefore reshaped to `(835, 835, 8)`.
+    This is marginally smaller then the smallest real image dimension of `837` pixels
+    """
 
     if not x_train_path.exists() or not y_train_path.exists():
-        s = 835
+        image_size = 835
+        # code becomes unreadable with image_size
+        s = image_size
 
-        x = np.zeros((5 * s, 5 * s, 8))
-        y = np.zeros((5 * s, 5 * s, N_Cls))
+        x = np.zeros((5 * image_size, 5 * image_size, 8))
+        y = np.zeros((5 * image_size, 5 * image_size, N_Cls))
 
         ids = sorted(DF.ImageId.unique())
-        print(len(ids))
+        print(f'Number of images in train: {len(ids)}')
+        print(f'Shape of x: {x.shape}')
+        print(f'Shape of y: {y.shape}')
+        print(f'Resulting uniform image size: (835, 835, 8)')
         print(ids)
         for i in range(5):
             for j in range(5):
                 id = ids[5 * i + j]
-                print(id)
                 img = get_rgb_from_m_band(id)
                 img = stretch_n(img)
-                print(img.shape, id, np.amax(img), np.amin(img))
-                x[s * i:s * i + s, s * j:s * j + s, :] = img[:s, :s, :]
+                print(f'img id: {id}, shape: {img.shape}, max val: {np.amax(img)}, min val: {np.amin(img)}')
+                i_pos = s * i
+                j_pos = s * j
+                # write images of size (835,835, 8) to the array
+                x[i_pos:i_pos + s, j_pos:j_pos + s, :] = img[:s, :s, :]
+                
+                # Save image masks in y
                 for z in range(N_Cls):
-                    y[s * i:s * i + s, s * j:s * j + s, z] = generate_mask_for_image_and_class(
+                    img_mask = generate_mask_for_image_and_class(
                         raster_size=(img.shape[0], img.shape[1]),
                         imageId=id,
                         class_type=z + 1,
                         grid_sizes_panda=GS,
                         wkt_list_pandas=DF
-                    )[:s, :s]
-
-        print(np.amax(y), np.amin(y))
+                    )
+                    y[i_pos:i_pos + s, j_pos:j_pos + s, z] = img_mask[:s, :s]
 
         np.save(x_train_path, x)
         np.save(y_train_path, y)
@@ -266,7 +278,7 @@ if __name__ == '__main__':
     x_val_path   = Path(f'{inDir}/x_val_{N_Cls}.npy')
     y_val_path   = Path(f'{inDir}/y_val_{N_Cls}.npy')
 
-    stick_all_train()
+    generate_training_files()
     make_val()
     model = train_net()
     score, trs = calc_jacc(model)
