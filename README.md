@@ -13,5 +13,5 @@ The Jaccard coefficient measures similarity between finite sample sets, and is d
 
 ### Creating a virtual environment
 ``` bash
-pipenv install .
+pipenv install
 ```
