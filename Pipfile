@@ -11,6 +11,7 @@ shapely = "*"
 matplotlib = "*"
 scipy = "*"
 nbconvert = "*"
+opencv-python = "*"
 
 [dev-packages]
 

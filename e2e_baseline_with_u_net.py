@@ -1,8 +1,7 @@
 # https://www.kaggle.com/drn01z3/end-to-end-baseline-with-u-net-keras
 import os
-from pathlib import Path
-
 from collections import defaultdict
+from pathlib import Path
 
 import cv2
 import matplotlib.pyplot as plt
@@ -10,23 +9,27 @@ import numpy as np
 import pandas as pd
 import shapely.affinity
 import shapely.wkt
-# from shapely.wkt import loads as wkt_loads
-# from shapely.geometry import MultiPolygon, Polygon
-# from sklearn.metrics import jaccard_score
-
 from tensorflow.keras import Sequential
 from tensorflow.keras import backend as K
 from tensorflow.keras import layers
 from tensorflow.keras.callbacks import ModelCheckpoint
-from tensorflow.keras.layers import Conv2D, Input, MaxPooling2D, UpSampling2D
+from tensorflow.keras.layers import (Concatenate, Conv2D, Input, MaxPooling2D,
+                                     UpSampling2D)
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.python.keras.backend import concatenate
 from tensorflow.python.keras.engine.training import concat
 
-from helpers import (generate_mask_for_image_and_class, get_rgb_from_m_band,
-                     jaccard_coef, jaccard_coef_int, mask_for_polygons,
-                     mask_to_polygons, stretch_n, calc_jacc, get_scalers, subset_in_folder, get_patches)
+from helpers import (calc_jacc, generate_mask_for_image_and_class, get_patches,
+                     get_rgb_from_m_band, get_scalers, jaccard_coef,
+                     jaccard_coef_int, mask_for_polygons, mask_to_polygons,
+                     stretch_n, subset_in_folder)
+
+# from shapely.wkt import loads as wkt_loads
+# from shapely.geometry import MultiPolygon, Polygon
+# from sklearn.metrics import jaccard_score
+
+
 
 
 def generate_training_files():
@@ -75,7 +78,7 @@ def generate_training_files():
         np.save(x_train_path, x)
         np.save(y_train_path, y)
     else:
-        print('Traing dataset already exists, skipping.')
+        print('Training dataset already exists, skipping.')
 
 def make_val():
     """Create a validation set"""
@@ -90,90 +93,133 @@ def make_val():
         print('Validation dataset already exists, skipping.')
 
 def train_net():
+    print('Loading validation and training dataset...')
     x_val = np.load(x_val_path),
     y_val = np.load(y_val_path)
     img = np.load(x_train_path)
     msk = np.load(y_train_path)
+    print('Done loading validation and training dataset.')
 
     x_trn, y_trn = get_patches(img, msk)
 
     model = get_unet()
-    model.load_weights('weights/unet_10_jk0.7878')
+    # model.load_weights('weights/unet_10_jk0.7878')
     model_checkpoint = ModelCheckpoint('weights/unet_tmp.hdf5', monitor='loss', save_best_only=True)
     for i in range(1):
-        model.fit(x_trn, y_trn, batch_size=64, nb_epoch=1, verbose=1, shuffle=True,
-                  callbacks=[model_checkpoint], validation_data=(x_val, y_val))
+        model.fit(x=x_trn, y=y_trn, batch_size=64, epochs=1, shuffle=True,
+                    callbacks=[model_checkpoint], validation_data=(x_val, y_val))
+        # model.fit(x_trn, y_trn, batch_size=64, nb_epoch=1, verbose=1, shuffle=True,
+        #           callbacks=[model_checkpoint], validation_data=(x_val, y_val))
         del x_trn
         del y_trn
         x_trn, y_trn = get_patches(img, msk)
         score, trs = calc_jacc(model)
         print('val jk', score)
-        model.save_weights('weights/unet_10_jk%.4f' % score)
+        model.save_weights(f'weights/unet_10_jk{score}')
 
     return model
 
 
-def get_unet_seq():
-    model = Sequential([
-        layers.Input((8,ISZ,ISZ)),
-        layers.Conv2D(32,3,3, activation='relu', padding='same'),
-        layers.Conv2D(32,3,3, activation='relu', padding='same'),
-        layers.MaxPooling2D(pool_size=(2,2), padding='same'),
-
-        layers.Conv2D(64,3,3, activation='relu', padding='same'),
-        layers.Conv2D(64,3,3, activation='relu', padding='same'),
-        layers.MaxPooling2D(pool_size=(2,2)),
-        
-        layers.Conv2D(128,3,3, activation='relu', padding='same'),
-        layers.Conv2D(128,3,3, activation='relu', padding='same'),
-        layers.MaxPooling2D(pool_size=(2,2)),
-
-        layers.Conv2D(256,3,3, activation='relu', padding='same'),
-        layers.Conv2D(256,3,3, activation='relu', padding='same'),
-        layers.MaxPooling2D(pool_size=(2,2)),
-
-        layers.Conv2D(512,3,3, activation='relu', padding='same'),
-        layers.Conv2D(512,3,3, activation='relu', padding='same'),
-    ])
-
-
 def get_unet():
-    inputs = Input((8, ISZ, ISZ))
+    """
+    The original model uses upsampling. As this makes the layer dimensions incompatible for concatenation (without further modification),
+    a first version without it is defined here.
+    """
+    # inputs = Input((8, ISZ, ISZ))
+    input_shape = [160,160,8]
+    inputs = Input(input_shape)
     conv1 = Conv2D(32, 3, 3, activation='relu', padding='same')(inputs)
     conv1 = Conv2D(32, 3, 3, activation='relu', padding='same')(conv1)
-    pool1 = MaxPooling2D(pool_size=(2, 2), padding='same')(conv1)
+    assert conv1.shape.as_list() == [None, 18, 18, 32]
+    pool1 = MaxPooling2D(2, padding='same')(conv1)
 
     conv2 = Conv2D(64, 3, 3, activation='relu', padding='same')(pool1)
     conv2 = Conv2D(64, 3, 3, activation='relu', padding='same')(conv2)
-    pool2 = MaxPooling2D(pool_size=(2, 2), padding='same')(conv2)
+    pool2 = MaxPooling2D(2, padding='same')(conv2)
 
     conv3 = Conv2D(128, 3, 3, activation='relu', padding='same')(pool2)
     conv3 = Conv2D(128, 3, 3, activation='relu', padding='same')(conv3)
-    pool3 = MaxPooling2D(pool_size=(2, 2), padding='same')(conv3)
+    pool3 = MaxPooling2D(2, padding='same')(conv3)
 
     conv4 = Conv2D(256, 3, 3, activation='relu', padding='same')(pool3)
     conv4 = Conv2D(256, 3, 3, activation='relu', padding='same')(conv4)
-    pool4 = MaxPooling2D(pool_size=(2, 2), padding='same')(conv4)
+    assert conv4.shape.as_list() == [None, 1, 1, 256]
+    pool4 = MaxPooling2D(2, padding='same')(conv4)
 
     conv5 = Conv2D(512, 3, 3, activation='relu', padding='same')(pool4)
     conv5 = Conv2D(512, 3, 3, activation='relu', padding='same')(conv5)
-    # Dimension 0 in both shapes must be equal, but are 2 and 1. Shapes are [2,512] and [1,256]. for '{{node tf.keras.backend.concatenate/concat}} = ConcatV2[N=2, T=DT_FLOAT, Tidx=DT_INT32](Placeholder, Placeholder_1, tf.keras.backend.concatenate/concat/axis)'
-    # with input shapes: [?,2,2,512], [?,1,1,256], [] and with computed input tensors: input[2] = <1>.
-    up6 = concat([UpSampling2D(size=(2, 2))(conv5), conv4], axis=0)
-    # up6 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], axis=1)
-    # up6 = concatenate([UpSampling2D(size=(2, 2))(conv5), conv4], mode='concat', concat_axis=1)
+    assert conv5.shape.as_list() == [None, 1, 1, 512]
+    
+    up6 = Concatenate()([conv5,conv4])
     conv6 = Conv2D(256, 3, 3, activation='relu', padding='same')(up6)
     conv6 = Conv2D(256, 3, 3, activation='relu', padding='same')(conv6)
 
-    up7 = concatenate([UpSampling2D(size=(2, 2))(conv6), conv3], axis=1)
+    up7 = Concatenate()([conv6,conv3])
+    #up7 = concatenate([UpSampling2D(size=(2, 2))(conv6), conv3], axis=1)
     conv7 = Conv2D(128, 3, 3, activation='relu', padding='same')(up7)
     conv7 = Conv2D(128, 3, 3, activation='relu', padding='same')(conv7)
 
-    up8 = concatenate([UpSampling2D(size=(2, 2))(conv7), conv2], axis=1)
+    up8 = Concatenate()([conv7,conv2])
+    #up8 = concatenate([UpSampling2D(size=(2, 2))(conv7), conv2], axis=1)
     conv8 = Conv2D(64, 3, 3, activation='relu', padding='same')(up8)
     conv8 = Conv2D(64, 3, 3, activation='relu', padding='same')(conv8)
+    assert conv8.shape.as_list() == [None, 1, 1, 64]
 
-    up9 = concatenate([UpSampling2D(size=(2, 2))(conv8), conv1], axis=1)
+    # up9 = Concatenate()([conv8,conv1])
+    # #up9 = concatenate([UpSampling2D(size=(2, 2))(conv8), conv1], axis=1)
+    # conv9 = Conv2D(32, 3, 3, activation='relu', padding='same')(up9)
+    # conv9 = Conv2D(32, 3, 3, activation='relu', padding='same')(conv9)
+
+    # conv10 = Conv2D(N_Cls, 1, 1, activation='sigmoid')(conv9)
+
+    conv10 = Conv2D(N_Cls, 1, 1, activation='sigmoid')(conv8)
+
+    # model = Model(inputs=inputs, outputs=conv5)
+    model = Model(inputs=inputs, outputs=conv10)
+    model.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=[jaccard_coef, jaccard_coef_int, 'accuracy'])
+    return model
+
+def get_unet_with_upsampling():
+    inputs = Input((8, ISZ, ISZ))
+    conv1 = Conv2D(32, 3, 3, activation='relu', padding='same')(inputs)
+    conv1 = Conv2D(32, 3, 3, activation='relu', padding='same')(conv1)
+    pool1 = MaxPooling2D(2, padding='same')(conv1)
+
+    conv2 = Conv2D(64, 3, 3, activation='relu', padding='same')(pool1)
+    conv2 = Conv2D(64, 3, 3, activation='relu', padding='same')(conv2)
+    pool2 = MaxPooling2D(2, padding='same')(conv2)
+
+    conv3 = Conv2D(128, 3, 3, activation='relu', padding='same')(pool2)
+    conv3 = Conv2D(128, 3, 3, activation='relu', padding='same')(conv3)
+    pool3 = MaxPooling2D(2, padding='same')(conv3)
+
+    conv4 = Conv2D(256, 3, 3, activation='relu', padding='same')(pool3)
+    conv4 = Conv2D(256, 3, 3, activation='relu', padding='same')(conv4)
+    pool4 = MaxPooling2D(2, padding='same')(conv4)
+
+    conv5 = Conv2D(512, 3, 3, activation='relu', padding='same')(pool4)
+    conv5 = Conv2D(512, 3, 3, activation='relu', padding='same')(conv5)
+    conv5 = UpSampling2D(2)(conv5)
+    
+    up6 = Concatenate()([conv5,conv4])
+    conv6 = Conv2D(256, 3, 3, activation='relu', padding='same')(up6)
+    conv6 = Conv2D(256, 3, 3, activation='relu', padding='same')(conv6)
+    conv6 = UpSampling2D(2)(conv6)
+
+    up7 = Concatenate()([conv6,conv3])
+    #up7 = concatenate([UpSampling2D(size=(2, 2))(conv6), conv3], axis=1)
+    conv7 = Conv2D(128, 3, 3, activation='relu', padding='same')(up7)
+    conv7 = Conv2D(128, 3, 3, activation='relu', padding='same')(conv7)
+    conv7 = UpSampling2D(2)(conv7)
+
+    up8 = Concatenate()([conv7,conv2])
+    #up8 = concatenate([UpSampling2D(size=(2, 2))(conv7), conv2], axis=1)
+    conv8 = Conv2D(64, 3, 3, activation='relu', padding='same')(up8)
+    conv8 = Conv2D(64, 3, 3, activation='relu', padding='same')(conv8)
+    conv8 = UpSampling2D(2)(conv8)
+
+    up9 = Concatenate()([conv8,conv1])
+    #up9 = concatenate([UpSampling2D(size=(2, 2))(conv8), conv1], axis=1)
     conv9 = Conv2D(32, 3, 3, activation='relu', padding='same')(up9)
     conv9 = Conv2D(32, 3, 3, activation='relu', padding='same')(conv9)
 
