@@ -4,6 +4,10 @@ import cv2
 import random
 from numpy.lib.arraysetops import unique
 
+def can_be_concatenated(layer1, layer2):
+    """Check wether the first three layer dimensions (i.e `[None,1,1]`) are the same and can thus be concatenated."""
+    return layer1.shape.as_list()[:3] == layer2.shape.as_list()[:3]
+
 def _convert_coordinates_to_raster(coords, img_size, xymax):
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask

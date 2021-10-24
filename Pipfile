@@ -12,6 +12,8 @@ matplotlib = "*"
 scipy = "*"
 nbconvert = "*"
 opencv-python = "*"
+pydot = "*"
+graphviz = "*"
 
 [dev-packages]
 

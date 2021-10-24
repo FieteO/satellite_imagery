@@ -3,22 +3,17 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
-import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import shapely.affinity
 import shapely.wkt
-from tensorflow.keras import Sequential
-from tensorflow.keras import backend as K
-from tensorflow.keras import layers
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.layers import (Concatenate, Conv2D, Input, MaxPooling2D,
                                      UpSampling2D)
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-from tensorflow.python.keras.backend import concatenate
-from tensorflow.python.keras.engine.training import concat
+from tensorflow.keras.utils import plot_model
 
 from helpers import (calc_jacc, generate_mask_for_image_and_class, get_patches,
                      get_rgb_from_m_band, get_scalers, jaccard_coef,
@@ -177,6 +172,7 @@ def get_unet():
     # model = Model(inputs=inputs, outputs=conv5)
     model = Model(inputs=inputs, outputs=conv10)
     model.compile(optimizer=Adam(), loss='binary_crossentropy', metrics=[jaccard_coef, jaccard_coef_int, 'accuracy'])
+    plot_model(model, to_file='e2e_unet_plot.png')
     return model
 
 def get_unet_with_upsampling():
