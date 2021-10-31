@@ -29,7 +29,7 @@ from tensorflow.keras.optimizers import Adam
 
 warnings.filterwarnings("ignore")
 
-from helpers import (calc_jacc, generate_mask_for_image_and_class, get_patches,
+from helpers import (calc_jacc, generate_mask_for_image_and_class, generate_training_files, get_patches,
                      get_rgb_from_m_band, get_scalers, jaccard_coef,
                      jaccard_coef_int, mask_for_polygons, mask_to_polygons,
                      stretch_n)
@@ -42,6 +42,11 @@ SB = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
 ISZ = 160
 smooth = 1e-12
 
+# path to train file that contains the images
+x_train_path = Path(f'{inDir}/x_trn_{N_Cls}.npy')
+# path to train file that contains the mask of the image
+y_train_path = Path(f'{inDir}/y_trn_{N_Cls}.npy')
+
 
 datadir = Path(f'./{inDir}/unet_8_band/data/')
 if not datadir.exists():
@@ -51,31 +56,31 @@ if not datadir.exists():
     os.makedirs(f'./{inDir}/unet_8_band/subm/')
 
 
-def stick_all_train():
-    print ("let's stick all imgs together")
-    s = 835
+# def stick_all_train():
+#     print ("let's stick all imgs together")
+#     s = 835
 
-    x = np.zeros((5 * s, 5 * s, 8))
-    y = np.zeros((5 * s, 5 * s, N_Cls))
+#     x = np.zeros((5 * s, 5 * s, 8))
+#     y = np.zeros((5 * s, 5 * s, N_Cls))
 
-    ids = sorted(DF.ImageId.unique())
-    print (len(ids))
-    for i in range(5):
-        for j in range(5):
-            id = ids[5 * i + j]
+#     ids = sorted(DF.ImageId.unique())
+#     print (len(ids))
+#     for i in range(5):
+#         for j in range(5):
+#             id = ids[5 * i + j]
 
-            img = get_rgb_from_m_band(id)
-            img = stretch_n(img)
-            print (img.shape, id, np.amax(img), np.amin(img))
-            x[s * i:s * i + s, s * j:s * j + s, :] = img[:s, :s, :]
-            for z in range(N_Cls):
-                y[s * i:s * i + s, s * j:s * j + s, z] = generate_mask_for_image_and_class(
-                    (img.shape[0], img.shape[1]), id, z + 1)[:s, :s]
+#             img = get_rgb_from_m_band(id)
+#             img = stretch_n(img)
+#             print (img.shape, id, np.amax(img), np.amin(img))
+#             x[s * i:s * i + s, s * j:s * j + s, :] = img[:s, :s, :]
+#             for z in range(N_Cls):
+#                 y[s * i:s * i + s, s * j:s * j + s, z] = generate_mask_for_image_and_class(
+#                     (img.shape[0], img.shape[1]), id, z + 1)[:s, :s]
 
-    print (np.amax(y), np.amin(y))
+#     print (np.amax(y), np.amin(y))
 
-    np.save(f'{inDir}/unet_8_band/data/x_trn_%d' % N_Cls, x)
-    np.save(f'{inDir}/unet_8_band/data/y_trn_%d' % N_Cls, y)
+#     np.save(f'{inDir}/unet_8_band/data/x_trn_%d' % N_Cls, x)
+#     np.save(f'{inDir}/unet_8_band/data/y_trn_%d' % N_Cls, y)
 
 
 def make_val():
@@ -267,7 +272,7 @@ def check_predict(id='6120_2_3'):
 
 
 
-stick_all_train()
+generate_training_files(x_train_path, y_train_path)
 DF = None
 x = None
 y = None

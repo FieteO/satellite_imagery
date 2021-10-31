@@ -282,3 +282,51 @@ def subset_in_folder(dataframe, folder):
     unique_ids = set(ids)
     subset = dataframe[dataframe['ImageId'].isin(unique_ids)]
     return subset
+
+def generate_training_files(x_train_path, y_train_path):
+    """Saves the images and masks of the 25 train files as numpy arrays.
+
+    The images initially have slightly different sizes and are therefore reshaped to `(835, 835, 8)`.
+    This is marginally smaller then the smallest real image dimension of `837` pixels
+    """
+
+    if not x_train_path.exists() or not y_train_path.exists():
+        print('Creating a training dataset...')
+        image_size = 835
+        # code becomes unreadable with image_size
+        s = image_size
+
+        x = np.zeros((5 * image_size, 5 * image_size, 8))
+        y = np.zeros((5 * image_size, 5 * image_size, N_Cls))
+
+        ids = sorted(DF.ImageId.unique())
+        # print(f'Number of images in train: {len(ids)}')
+        # print(f'Shape of x: {x.shape}')
+        # print(f'Shape of y: {y.shape}')
+        # print(f'Resulting uniform image size: (835, 835, 8)')
+        for i in range(5):
+            for j in range(5):
+                id = ids[5 * i + j]
+                img = get_rgb_from_m_band(id)
+                img = stretch_n(img)
+                # print(f'img id: {id}, shape: {img.shape}, max val: {np.amax(img)}, min val: {np.amin(img)}')
+                i_pos = s * i
+                j_pos = s * j
+                # write images of size (835,835, 8) to the array
+                x[i_pos:i_pos + s, j_pos:j_pos + s, :] = img[:s, :s, :]
+                
+                # Save image masks in y
+                for z in range(N_Cls):
+                    img_mask = generate_mask_for_image_and_class(
+                        raster_size=(img.shape[0], img.shape[1]),
+                        imageId=id,
+                        class_type=z + 1,
+                        grid_sizes_panda=GS,
+                        wkt_list_pandas=DF
+                    )
+                    y[i_pos:i_pos + s, j_pos:j_pos + s, z] = img_mask[:s, :s]
+
+        np.save(x_train_path, x)
+        np.save(y_train_path, y)
+    else:
+        print('Training dataset already exists, skipping.')
