@@ -5,3 +5,5 @@ dataset
 .satenv
 .venv
 .ipynb_checkpoints
+weights
+*.png

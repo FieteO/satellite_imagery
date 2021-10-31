@@ -22,27 +22,25 @@ def _convert_coordinates_to_raster(coords, img_size, xymax):
     coords_int = np.round(coords).astype(np.int32)
     return coords_int
 
-def calc_jacc(model, N_Cls = 10):
+def calc_jacc(model, img, msk, N_Cls = 10):
     from sklearn.metrics import jaccard_score
-    img = np.load('data/x_tmp_%d.npy' % N_Cls)
-    msk = np.load('data/y_tmp_%d.npy' % N_Cls)
 
     prd = model.predict(img, batch_size=4)
     print(prd.shape, msk.shape)
     avg, trs = [], []
 
     for i in range(N_Cls):
-        t_msk = msk[:, i, :, :]
+        y_true = msk[:, i, :, :]
         t_prd = prd[:, i, :, :]
-        t_msk = t_msk.reshape(msk.shape[0] * msk.shape[2], msk.shape[3])
+        y_true = y_true.reshape(msk.shape[0] * msk.shape[2], msk.shape[3])
         t_prd = t_prd.reshape(msk.shape[0] * msk.shape[2], msk.shape[3])
 
         m, b_tr = 0, 0
         for j in range(10):
             tr = j / 10.0
-            pred_binary_mask = t_prd > tr
+            y_pred = t_prd > tr
 
-            jk = jaccard_score(t_msk, pred_binary_mask)
+            jk = jaccard_score(y_true, y_pred, average='micro')
             if jk > m:
                 m = jk
                 b_tr = tr
@@ -53,36 +51,57 @@ def calc_jacc(model, N_Cls = 10):
     score = sum(avg) / 10.0
     return score, trs
 
-def get_patches(img, msk, amt=10000, aug=True, ISZ=160, N_Cls=10):
-    is2 = int(1.0 * ISZ)
-    xm, ym = img.shape[0] - is2, img.shape[1] - is2
+def get_patches(img, msk, amt=10000, aug=True, image_size=160, N_Cls=10, labels_start=False):
+    """
+    Splits up the given numpy array into patches of [number_of_images,8,160,160]
+    In: (4175,4175,8)
+    Out: (3547, 8, 160, 160)
+
+    :param bool labels_start: have labels in the second dimension of the output array
+    """
+    assert image_size == int(1.0 * image_size), 'image_size should conform to a specific format'
+    xm = img.shape[0] - image_size
+    ym = img.shape[1] - image_size
+    # print(f'xm: {xm}, ym: {ym}')
 
     x, y = [], []
 
     tr = [0.4, 0.1, 0.1, 0.15, 0.3, 0.95, 0.1, 0.05, 0.001, 0.005]
-    for i in range(amt):
+    for _ in range(amt):
         xc = random.randint(0, xm)
         yc = random.randint(0, ym)
+        # print(f'xc: {xc}, yc: {yc}')
 
-        im = img[xc:xc + is2, yc:yc + is2]
-        ms = msk[xc:xc + is2, yc:yc + is2]
+        im = img[xc:xc + image_size, yc:yc + image_size]
+        ms = msk[xc:xc + image_size, yc:yc + image_size]
+        # print(f'im shape: {im.shape}')
+        # print(f'ms shape: {ms.shape}')
 
-        for j in range(N_Cls):
-            sm = np.sum(ms[:, :, j])
-            if 1.0 * sm / is2 ** 2 > tr[j]:
+        for class_index in range(N_Cls):
+            sm = np.sum(ms[:, :, class_index])
+            magic_number        = 1.0 * sm / image_size ** 2
+            other_magic_number  = tr[class_index]
+            if magic_number > other_magic_number:
                 if aug:
                     if random.uniform(0, 1) > 0.5:
+                        # print(f'Before: {im[:10,0,0]}')
                         im = im[::-1]
+                        # print(f'After: {im[:10,0,0]}')
                         ms = ms[::-1]
                     if random.uniform(0, 1) > 0.5:
                         im = im[:, ::-1]
                         ms = ms[:, ::-1]
-
                 x.append(im)
                 y.append(ms)
 
-    x, y = 2 * np.transpose(x, (0, 3, 1, 2)) - 1, np.transpose(y, (0, 3, 1, 2))
-    print(x.shape, y.shape, np.amax(x), np.amin(x), np.amax(y), np.amin(y))
+    x = np.array(x)
+    y = np.array(y)
+    if labels_start:
+        # reshape the array into another column order from (160,160,8) to (8, 160, 160)
+        column_order = (0,3,1,2)
+        x = np.transpose(x, column_order),
+        y = np.transpose(y, column_order)
+    x = 2 * x - 1
     return x, y
 
 
@@ -168,7 +187,8 @@ def jaccard_coef(y_true, y_pred, smooth = 1e-12):
     return backend.mean(jac)
 
 
-def jaccard_coef_int(y_true, y_pred):
+def jaccard_coef_int(y_true, y_pred, smooth = 1e-12):
+    import tensorflow.keras.backend as K
     # __author__ = Vladimir Iglovikov
     y_pred_pos = K.round(K.clip(y_pred, 0, 1))
 
@@ -252,7 +272,7 @@ def get_rgb_from_m_band(image_id, inDir='dataset', band = 'sixteen_band'):
     # https://www.kaggle.com/aamaia/dstl-satellite-imagery-feature-detection/rgb-using-m-bands-example
     filename = os.path.join(inDir, band, '{}_M.tif'.format(image_id))
     img = tiff.imread(filename)
-    img = np.rollaxis(img, 0, 3)
+    img = np.moveaxis(img, 0, 2)
     return img
 
 def subset_in_folder(dataframe, folder):
