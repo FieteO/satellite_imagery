@@ -7,3 +7,5 @@ dataset
 .ipynb_checkpoints
 weights
 *.png
+data.nosync
+.DS_Store
