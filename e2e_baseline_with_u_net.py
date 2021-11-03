@@ -18,7 +18,7 @@ from tensorflow.python.keras.layers.merge import concatenate
 
 from helpers import (calc_jacc, generate_training_files, get_patches,
                      get_rgb_from_m_band, get_scalers, jaccard_coef,
-                     jaccard_coef_int, mask_for_polygons, mask_to_polygons,
+                     jaccard_coef_int, mask_for_polygons, mask_to_polygons, plot_metric,
                      stretch_n, subset_in_folder)
 
 
@@ -48,7 +48,7 @@ def train_net(epochs=2):
     model = get_unet(image_size)
     model_checkpoint = ModelCheckpoint('weights/unet_tmp.hdf5', monitor='loss', save_best_only=True)
     for _ in range(1):
-        model.fit(x=x_trn, y=y_trn, batch_size=64, epochs=epochs, shuffle=True,
+        history = model.fit(x=x_trn, y=y_trn, batch_size=64, epochs=epochs, shuffle=True,
                     callbacks=[model_checkpoint], validation_data=(x_val, y_val))
 
         del x_trn
@@ -58,8 +58,14 @@ def train_net(epochs=2):
         # y_val = np.load(y_val_path)
         score, _ = calc_jacc(model, x_val, y_val)
         print(f'Validation Jaccard Score: {score}')
-        model.save_weights(f'weights/unet_10_jk{score}')
-
+        # model.save_weights(f'weights/unet_10_jk{score}', save_format='h5')
+        model.save(f'models/unet_jk_score_{round(score,3)}.h5')
+        np.save(f'models/unet_jk_score_{round(score,3)}_history.npy',history.history)
+        
+        plot_metric(history, 'accuracy')
+        plot_metric(history, 'loss')
+        plot_metric(history, 'jaccard_coef')
+        plot_metric(history, 'jaccard_coef_int')
     return model
 
 # https://www.kaggle.com/kmader/data-preprocessing-and-unet-segmentation-gpu
@@ -196,7 +202,7 @@ if __name__ == '__main__':
     band = 'sixteen_band'
     image_size = 160
     smooth = 1e-12
-    train_epochs = 5
+    train_epochs = 10
 
     DF = pd.read_csv(inDir + '/train_wkt_v4.csv')
     DF = subset_in_folder(DF, f'{inDir}/{band}')

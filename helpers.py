@@ -330,3 +330,17 @@ def generate_training_files(x_train_path, y_train_path):
         np.save(y_train_path, y)
     else:
         print('Training dataset already exists, skipping.')
+
+from tensorflow.keras.callbacks import History
+def plot_metric(history, metric):
+    import matplotlib.pyplot as plt
+    train_metrics = history.history[metric]
+    val_metrics = history.history['val_'+metric]
+    epochs = range(1, len(train_metrics) + 1)
+    plt.plot(epochs, train_metrics)
+    plt.plot(epochs, val_metrics)
+    plt.title('Training and validation '+ metric)
+    plt.xlabel("Epochs")
+    plt.ylabel(metric)
+    plt.legend(["train_"+metric, 'val_'+metric])
+    plt.show()
