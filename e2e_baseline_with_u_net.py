@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import shapely.affinity
 import shapely.wkt
-from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.layers import (BatchNormalization, Conv2D,
                                      Conv2DTranspose, Dropout, Input,
                                      MaxPooling2D)
@@ -16,10 +16,10 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import plot_model
 from tensorflow.python.keras.layers.merge import concatenate
 
-from helpers import (calc_jacc, generate_training_files, get_patches,
-                     get_rgb_from_m_band, get_scalers, jaccard_coef,
-                     jaccard_coef_int, mask_for_polygons, mask_to_polygons, plot_metric,
-                     stretch_n, subset_in_folder)
+from helpers import (calc_jacc, generate_training_files, get_metric_plot,
+                     get_patches, get_rgb_from_m_band, get_scalers,
+                     jaccard_coef, jaccard_coef_int, mask_for_polygons,
+                     mask_to_polygons, stretch_n)
 
 
 def make_val():
@@ -46,10 +46,13 @@ def train_net(epochs=2):
     x_trn, y_trn = get_patches(img, msk)
 
     model = get_unet(image_size)
-    model_checkpoint = ModelCheckpoint('weights/unet_tmp.hdf5', monitor='loss', save_best_only=True)
+    callbacks = [
+        ModelCheckpoint('weights/unet_tmp.hdf5', monitor='loss', save_best_only=True),
+        EarlyStopping(monitor='val_jaccard_coef', patience=8)
+    ]
     for _ in range(1):
         history = model.fit(x=x_trn, y=y_trn, batch_size=64, epochs=epochs, shuffle=True,
-                    callbacks=[model_checkpoint], validation_data=(x_val, y_val))
+                    callbacks=callbacks, validation_data=(x_val, y_val))
 
         del x_trn
         del y_trn
@@ -62,10 +65,18 @@ def train_net(epochs=2):
         model.save(f'models/unet_jk_score_{round(score,3)}.h5')
         np.save(f'models/unet_jk_score_{round(score,3)}_history.npy',history.history)
         
-        plot_metric(history, 'accuracy')
-        plot_metric(history, 'loss')
-        plot_metric(history, 'jaccard_coef')
-        plot_metric(history, 'jaccard_coef_int')
+        plot = get_metric_plot(history, 'accuracy')
+        plot.savefig(f'models/plots/unet_jk_score_{round(score,3)}_accuracy.png')
+        plot.show()
+        plot = get_metric_plot(history, 'loss')
+        plot.savefig(f'models/plots/unet_jk_score_{round(score,3)}_loss.png')
+        plot.show()
+        plot = get_metric_plot(history, 'jaccard_coef')
+        plot.savefig(f'models/plots/unet_jk_score_{round(score,3)}_jaccard_coef.png')
+        plot.show()
+        plot = get_metric_plot(history, 'jaccard_coef_int')
+        plot.savefig(f'models/plots/unet_jk_score_{round(score,3)}_jaccard_coef_int.png')
+        plot.show()
     return model
 
 # https://www.kaggle.com/kmader/data-preprocessing-and-unet-segmentation-gpu
@@ -202,10 +213,9 @@ if __name__ == '__main__':
     band = 'sixteen_band'
     image_size = 160
     smooth = 1e-12
-    train_epochs = 10
+    train_epochs = 30
 
     DF = pd.read_csv(inDir + '/train_wkt_v4.csv')
-    DF = subset_in_folder(DF, f'{inDir}/{band}')
     GS = pd.read_csv(inDir + '/grid_sizes.csv', names=['ImageId', 'Xmax', 'Ymin'], skiprows=1)
     SB = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
 
