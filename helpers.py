@@ -332,7 +332,7 @@ def generate_training_files(x_train_path, y_train_path):
         print('Training dataset already exists, skipping.')
 
 from tensorflow.keras.callbacks import History
-def plot_metric(history, metric):
+def get_metric_plot(history: History, metric):
     import matplotlib.pyplot as plt
     train_metrics = history.history[metric]
     val_metrics = history.history['val_'+metric]
@@ -343,4 +343,4 @@ def plot_metric(history, metric):
     plt.xlabel("Epochs")
     plt.ylabel(metric)
     plt.legend(["train_"+metric, 'val_'+metric])
-    plt.show()
+    return plt
