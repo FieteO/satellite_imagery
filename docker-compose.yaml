@@ -1,0 +1,18 @@
+# https://docs.docker.com/compose/compose-file/compose-file-v3/
+version: "3.7"
+
+services:
+  flask_server:
+    image: tensorflow/serving
+    ports:
+      - "8501:8501"
+    environment:
+      - MODEL_NAME=unet
+      # Enable request logging
+      - TF_CPP_VMODULE=http_server=1
+    volumes:
+      - type: bind
+        source: ./App/unet/
+        target: /models/unet
+        volume:
+          nocopy: true

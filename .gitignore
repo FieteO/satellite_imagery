@@ -9,3 +9,5 @@ weights
 *.png
 data.nosync
 .DS_Store
+**/unet/**
+models

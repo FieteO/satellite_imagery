@@ -1,7 +1,9 @@
+from typing import Tuple
 import numpy as np
 import os
 import random
-from numpy.lib.arraysetops import unique
+import tensorflow as tf
+import pandas as pd
 
 def can_be_concatenated(layer1, layer2):
     """Check wether the first three layer dimensions (i.e `[None,1,1]`) are the same and can thus be concatenated."""
@@ -50,7 +52,26 @@ def calc_jacc(model, img, msk, N_Cls = 10):
     score = sum(avg) / 10.0
     return score, trs
 
-def get_patches(img, msk, amt=10000, aug=True, image_size=160, N_Cls=10, labels_start=False):
+def get_patch(images: np.ndarray, masks: np.ndarray, image_size):
+    """
+    Returns an image patch from a random position in the given array
+    """
+    x_length = images.shape[0]
+    y_length = images.shape[1]
+    # random number + image_size may not be larger then length
+    # this is to prevent an array out of bounds in the following steps
+    random_x_pos = random.randint(0, x_length - image_size)
+    random_y_pos = random.randint(0, y_length - image_size)
+    
+    x_lower = random_x_pos
+    y_lower = random_y_pos
+    x_upper = random_x_pos + image_size
+    y_upper = random_y_pos + image_size
+    image_patch = images[x_lower:x_upper, y_lower:y_upper,:]
+    mask_patch  =  masks[x_lower:x_upper, y_lower:y_upper,:]
+    return image_patch, mask_patch
+
+def get_patches(images, masks, amt=10000, aug=True, image_size=160, N_Cls=10, labels_start=False):
     """
     Splits up the given numpy array into patches of [number_of_images,8,160,160]
     In: (4175,4175,8)
@@ -59,22 +80,14 @@ def get_patches(img, msk, amt=10000, aug=True, image_size=160, N_Cls=10, labels_
     :param bool labels_start: have labels in the second dimension of the output array
     """
     assert image_size == int(1.0 * image_size), 'image_size should conform to a specific format'
-    xm = img.shape[0] - image_size
-    ym = img.shape[1] - image_size
-    # print(f'xm: {xm}, ym: {ym}')
-
     x, y = [], []
 
     tr = [0.4, 0.1, 0.1, 0.15, 0.3, 0.95, 0.1, 0.05, 0.001, 0.005]
     for _ in range(amt):
-        xc = random.randint(0, xm)
-        yc = random.randint(0, ym)
-        # print(f'xc: {xc}, yc: {yc}')
+        x_patch, y_patch = get_patch(images, masks, image_size)
 
-        im = img[xc:xc + image_size, yc:yc + image_size]
-        ms = msk[xc:xc + image_size, yc:yc + image_size]
-        # print(f'im shape: {im.shape}')
-        # print(f'ms shape: {ms.shape}')
+        im = x_patch
+        ms = y_patch
 
         for class_index in range(N_Cls):
             sm = np.sum(ms[:, :, class_index])
@@ -176,7 +189,23 @@ def stretch_n(bands, lower_percent=5, higher_percent=95):
 
     return out.astype(np.float32)
 
-def jaccard_coef(y_true, y_pred, smooth = 1e-12):
+# https://www.tensorflow.org/api_docs/python/tf/keras/metrics/Metric#standalone_usage_2
+# Not done yet
+# class Jaccard(tf.keras.metrics.Metric):
+#     """
+#     A custom Keras metric to compute the running average of the confusion matrix
+#     """
+#     def __init__(self, name='jaccard', **kwargs):
+#         super(Jaccard, self).__init__(name=name, **kwargs)
+#         self.jaccard_score = self.add_weight(name='jc', initializer='zeros')
+
+#     def update_state(self, y_true, y_pred, sample_weight=None):
+#         self.jaccard_score.assign_add()
+
+#     def result(self):
+#         return self.jaccard_score
+
+def jaccard(y_true, y_pred, smooth = 1e-12):
     from tensorflow.keras import backend
     # __author__ = Vladimir Iglovikov
     intersection = backend.sum(y_true * y_pred, axis=[0, -1, -2])
@@ -186,16 +215,15 @@ def jaccard_coef(y_true, y_pred, smooth = 1e-12):
 
     return backend.mean(jac)
 
-
-def jaccard_coef_int(y_true, y_pred, smooth = 1e-12):
-    import tensorflow.keras.backend as K
+def jaccard_int(y_true, y_pred, smooth = 1e-12):
+    from tensorflow.keras import backend
     # __author__ = Vladimir Iglovikov
-    y_pred_pos = K.round(K.clip(y_pred, 0, 1))
+    y_pred_pos = backend.round(backend.clip(y_pred, 0, 1))
 
-    intersection = K.sum(y_true * y_pred_pos, axis=[0, -1, -2])
-    sum_ = K.sum(y_true + y_pred_pos, axis=[0, -1, -2])
+    intersection = backend.sum(y_true * y_pred_pos, axis=[0, -1, -2])
+    sum_ = backend.sum(y_true + y_pred_pos, axis=[0, -1, -2])
     jac = (intersection + smooth) / (sum_ - intersection + smooth)
-    return K.mean(jac)
+    return backend.mean(jac)
 
 def get_scalers(im_size, x_max, y_min):
     # __author__ = Konstantin Lopuhin
@@ -267,12 +295,12 @@ def mask_to_polygons(mask, epsilon=1, min_area=1.):
             all_polygons = MultiPolygon([all_polygons])
     return all_polygons
 
-def get_rgb_from_m_band(image_id, inDir='dataset', band = 'sixteen_band'):
+def read_image(image_id, inDir='dataset/sixteen_band'):
     """Returns a three channel rgb image from a 16 band image"""
     import tifffile as tiff
     # __author__ = amaia
     # https://www.kaggle.com/aamaia/dstl-satellite-imagery-feature-detection/rgb-using-m-bands-example
-    filename = os.path.join(inDir, band, '{}_M.tif'.format(image_id))
+    filename = os.path.join(inDir, f'{image_id}_M.tif')
     img = tiff.imread(filename)
     img = np.moveaxis(img, 0, 2)
     return img
@@ -285,7 +313,7 @@ def subset_in_folder(dataframe, folder):
     subset = dataframe[dataframe['ImageId'].isin(unique_ids)]
     return subset
 
-def generate_training_files(x_train_path, y_train_path):
+def generate_training_files(masks: pd.DataFrame, grid_sizes: pd.DataFrame, x_train_path, y_train_path) -> Tuple[np.ndarray, np.ndarray]:
     """Saves the images and masks of the 25 train files as numpy arrays.
 
     The images initially have slightly different sizes and are therefore reshaped to `(835, 835, 8)`.
@@ -293,15 +321,17 @@ def generate_training_files(x_train_path, y_train_path):
     """
 
     if not x_train_path.exists() or not y_train_path.exists():
-        print('Creating a training dataset...')
-        image_size = 835
+        print('Generating a training dataset...')
+        image_size  = 835
+        ids         = sorted(masks['ImageId'].unique())
+        n_classes   = masks['ClassType'].nunique()
         # code becomes unreadable with image_size
         s = image_size
 
         x = np.zeros((5 * image_size, 5 * image_size, 8))
-        y = np.zeros((5 * image_size, 5 * image_size, N_Cls))
+        y = np.zeros((5 * image_size, 5 * image_size, n_classes))
 
-        ids = sorted(DF.ImageId.unique())
+        
         # print(f'Number of images in train: {len(ids)}')
         # print(f'Shape of x: {x.shape}')
         # print(f'Shape of y: {y.shape}')
@@ -309,7 +339,7 @@ def generate_training_files(x_train_path, y_train_path):
         for i in range(5):
             for j in range(5):
                 id = ids[5 * i + j]
-                img = get_rgb_from_m_band(id)
+                img = read_image(id)
                 img = stretch_n(img)
                 # print(f'img id: {id}, shape: {img.shape}, max val: {np.amax(img)}, min val: {np.amin(img)}')
                 i_pos = s * i
@@ -318,20 +348,23 @@ def generate_training_files(x_train_path, y_train_path):
                 x[i_pos:i_pos + s, j_pos:j_pos + s, :] = img[:s, :s, :]
                 
                 # Save image masks in y
-                for z in range(N_Cls):
+                for z in range(n_classes):
                     img_mask = generate_mask_for_image_and_class(
                         raster_size=(img.shape[0], img.shape[1]),
                         imageId=id,
                         class_type=z + 1,
-                        grid_sizes_panda=GS,
-                        wkt_list_pandas=DF
+                        grid_sizes_panda=grid_sizes,
+                        wkt_list_pandas=masks
                     )
                     y[i_pos:i_pos + s, j_pos:j_pos + s, z] = img_mask[:s, :s]
-
         np.save(x_train_path, x)
         np.save(y_train_path, y)
+        return (x, y)
     else:
         print('Training dataset already exists, skipping.')
+        x = np.load(x_train_path)
+        y = np.load(y_train_path)
+        return (x, y)
 
 from tensorflow.keras.callbacks import History
 def get_metric_plot(history: History, metric):
