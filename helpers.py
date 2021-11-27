@@ -1,6 +1,5 @@
 import numpy as np
 import os
-import cv2
 import random
 from numpy.lib.arraysetops import unique
 
@@ -144,6 +143,7 @@ def _get_and_convert_contours(polygonList, raster_img_size, xymax):
 def _plot_mask_from_contours(raster_img_size, contours, class_value=1):
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
+    import cv2
     img_mask = np.zeros(raster_img_size, np.uint8)
     if contours is None:
         return img_mask
@@ -209,6 +209,7 @@ def get_scalers(im_size, x_max, y_min):
 def mask_for_polygons(polygons, im_size):
     # __author__ = Konstantin Lopuhin
     # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
+    import cv2
     img_mask = np.zeros(im_size, np.uint8)
     if not polygons:
         return img_mask
@@ -224,6 +225,7 @@ def mask_for_polygons(polygons, im_size):
 def mask_to_polygons(mask, epsilon=1, min_area=1.):
     from shapely.geometry import MultiPolygon, Polygon
     from collections import defaultdict
+    import cv2
     # __author__ = Konstantin Lopuhin
     # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
 
