@@ -7,22 +7,19 @@ import numpy as np
 import pandas as pd
 import shapely.affinity
 import shapely.wkt
+from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-from tensorflow.keras.layers import (BatchNormalization, Conv2D,
-                                     Conv2DTranspose, Dropout, Input,
-                                     MaxPooling2D, UpSampling2D, Activation, Dense, Reshape)
+from tensorflow.keras.layers import (Activation, BatchNormalization, Conv2D,
+                                     Conv2DTranspose, Dense, Dropout, Input,
+                                     MaxPooling2D, Reshape, UpSampling2D)
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import plot_model
-# from tensorflow.python.keras.layers.convolutional import UpSampling2D
-# from tensorflow.python.keras.layers.core import Activation, Dense, Reshape
-from tensorflow.python.keras.layers.merge import concatenate
 
-from helpers import (calc_jacc, generate_training_files, get_metric_plot,
-                     get_patches, read_image, get_scalers,
-                     jaccard, jaccard_int, mask_for_polygons,
-                     mask_to_polygons, stretch_n)
-from unet import get_unet
+from helpers import (calc_jacc, read_images_masks, get_metric_plot,
+                     get_patches, get_scalers, jaccard, jaccard_int,
+                     mask_for_polygons, mask_to_polygons, read_image,
+                     stretch_n)
 
 
 def make_val():
@@ -39,15 +36,26 @@ def make_val():
         print('Validation dataset already exists, skipping.')
 
 
-def train_net(epochs=2):
+def train_model(images: np.ndarray, masks: np.ndarray, epochs=2):
     print('Loading validation and training dataset...')
-    images = np.load(x_train_path)
-    masks = np.load(y_train_path)
-    x_val = np.load(x_val_path)
-    y_val = np.load(y_val_path)
-    print('Done loading validation and training dataset.')
+    # images = np.load(x_train_path)
+    # masks = np.load(y_train_path)
+    # x_val = np.load(x_val_path)
+    # y_val = np.load(y_val_path)
+    print(f'Images before train test split: {images.shape}')
+    # print('Done loading validation and training dataset.')
+    x_train, x_test, y_train, y_test = train_test_split(
+        images, masks, test_size=0.2, random_state=42)
 
-    x_trn, y_trn = get_patches(images, masks)
+    print(f'Images after train test split: {x_train.shape}')
+    print(y_train.shape)
+
+    # random patches in correct model input size
+    x_train, y_train = get_patches(x_train, y_train)
+    x_test, y_test = get_patches(x_test, y_test)
+
+    print(x_train.shape)
+    print(y_train.shape)
 
     model = get_segnet(image_size)
     callbacks = [
@@ -55,38 +63,37 @@ def train_net(epochs=2):
                         monitor='loss', save_best_only=True),
         EarlyStopping(monitor='val_jaccard', patience=8)
     ]
-    print(x_trn.shape)
-    print(y_trn.shape)
+    print(x_train.shape)
+    print(y_train.shape)
     for _ in range(1):
-        history = model.fit(x=x_trn, y=y_trn, batch_size=64, epochs=epochs, shuffle=True,
-                            callbacks=callbacks, validation_data=(x_val, y_val))
+        history = model.fit(x=x_train, y=y_train, batch_size=64, epochs=epochs, shuffle=True,
+                            callbacks=callbacks, validation_data=(x_test, y_test))
 
-        del x_trn
-        del y_trn
+        del x_train
+        del y_train
         # x_trn, y_trn = get_patches(img, msk)
         # x_val = np.load(x_val_path)
         # y_val = np.load(y_val_path)
-        score, _ = calc_jacc(model, x_val, y_val)
+        score, _ = calc_jacc(model, x_test, y_test)
         print(f'Validation Jaccard Score: {score}')
         # model.save_weights(f'weights/unet_10_jk{score}', save_format='h5')
         model.save(f'models/segnet_jk_score_{round(score,3)}.h5')
         np.save(
             f'models/segnet_jk_score_{round(score,3)}_history.npy', history.history)
 
+        plot_outdir = Path('models/plots')
+        plot_outdir.mkdir(exist_ok=True)
         plot = get_metric_plot(history, 'accuracy')
-        plot.savefig(
-            f'models/plots/segnet_jk_score_{round(score,3)}_accuracy.png')
+        plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_accuracy.png'))
         plot.show()
         plot = get_metric_plot(history, 'loss')
-        plot.savefig(f'models/plots/segnet_jk_score_{round(score,3)}_loss.png')
+        plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_loss.png'))
         plot.show()
         plot = get_metric_plot(history, 'jaccard')
-        plot.savefig(
-            f'models/plots/segnet_jk_score_{round(score,3)}_jaccard.png')
+        plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_jaccard.png'))
         plot.show()
         plot = get_metric_plot(history, 'jaccard_int')
-        plot.savefig(
-            f'models/plots/segnet_jk_score_{round(score,3)}_jaccard_int.png')
+        plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_jaccard_int.png'))
         plot.show()
     return model
 
@@ -208,7 +215,9 @@ def get_segnet(image_size):
     model = Model(inputs=[inputs], outputs=[outputs])
     model.compile(optimizer=Adam(), loss='binary_crossentropy',
                   metrics=[jaccard, jaccard_int, 'accuracy'])
-    plot_model(model, to_file='models/segnet_plot.png')
+    plot_outdir = Path('models')
+    plot_outdir.mkdir(exist_ok=True)
+    plot_model(model, to_file=plot_outdir.joinpath('segnet_plot.png'))
     model.summary()
     return model
 
@@ -249,7 +258,7 @@ def predict_test(model, trs):
 
 
 def make_submit():
-    df = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
+    df = pd.read_csv(os.path.join(data_dir, 'sample_submission.csv'))
     print(df.head())
     for idx, row in df.iterrows():
         id = row[0]
@@ -297,35 +306,45 @@ def check_predict(id='6120_2_3', image_size=160):
 
 if __name__ == '__main__':
     N_Cls = 10
-    inDir = 'dataset'
-    band = 'sixteen_band'
+    data_dir = Path('dataset')
+    image_folder = data_dir.joinpath('sixteen_band')
+    model_outdir = 'App/unet'
+    model_version = 1
     image_size = 160
     smooth = 1e-12
     train_epochs = 1
 
-    MASK_DF = pd.read_csv(inDir + '/train_wkt_v4.csv')
-    GRID_DF = pd.read_csv(inDir + '/grid_sizes.csv',
+    MASK_DF = pd.read_csv(data_dir.joinpath('train_wkt_v4.csv'))
+    GRID_DF = pd.read_csv(data_dir.joinpath('grid_sizes.csv'),
                      names=['ImageId', 'Xmax', 'Ymin'], skiprows=1)
-    SB = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
+    SB = pd.read_csv(data_dir.joinpath('sample_submission.csv'))
 
-    # path to train file that contains the images
-    x_train_path = Path(f'{inDir}/x_trn_{N_Cls}.npy')
-    # path to train file that contains the mask of the image
-    y_train_path = Path(f'{inDir}/y_trn_{N_Cls}.npy')
-    x_val_path = Path(f'{inDir}/x_val_{N_Cls}.npy')
-    y_val_path = Path(f'{inDir}/y_val_{N_Cls}.npy')
+    images_path  = data_dir.joinpath('images.npy')
+    masks_path   = data_dir.joinpath('masks.npy')
+    x_train_path = data_dir.joinpath(f'x_trn_{N_Cls}.npy')
+    y_train_path = data_dir.joinpath(f'y_trn_{N_Cls}.npy')
+    x_val_path   = data_dir.joinpath(f'x_val_{N_Cls}.npy')
+    y_val_path   = data_dir.joinpath(f'y_val_{N_Cls}.npy')
 
-    images = np.load(x_train_path)
-    masks = np.load(y_train_path)
+    if not images_path.exists() or not masks_path.exists():
+        images, masks = read_images_masks(MASK_DF, GRID_DF, image_folder)
+        np.save(images_path, images)
+        np.save(masks_path, masks)
+    else:
+        print('Base dataset already exists, skipping.')
+        images = np.load(images_path)
+        masks  = np.load(masks_path)
 
-    x, y = generate_training_files(MASK_DF, GRID_DF, x_train_path, y_train_path)
+    print(f'Images shape: {images.shape}')
+    print(f'Masks shape: {masks.shape}')
+
     # np.save(x_train_path, x)
     # np.save(y_train_path, y)
-    make_val()
-    print(images.shape)
-    print(masks.shape)
-    model = get_segnet(image_size)
-    model = train_net(epochs=train_epochs)
+    # make_val()
+    
+    
+    # model = get_segnet(image_size)
+    model = train_model(images, masks, train_epochs)
 
     # score, trs = calc_jacc(model, np.load(x_val_path), np.load(y_val_path))
     # predict_test(model, trs)

@@ -29,7 +29,7 @@ from tensorflow.keras.optimizers import Adam
 
 warnings.filterwarnings("ignore")
 
-from helpers import (calc_jacc, generate_mask_for_image_and_class, generate_training_files, get_patches,
+from helpers import (calc_jacc, generate_mask_for_image_and_class, read_images_masks, get_patches,
                      get_rgb_from_m_band, get_scalers, jaccard_coef,
                      jaccard_coef_int, mask_for_polygons, mask_to_polygons,
                      stretch_n)
@@ -272,7 +272,7 @@ def check_predict(id='6120_2_3'):
 
 
 
-generate_training_files(x_train_path, y_train_path)
+read_images_masks(x_train_path, y_train_path)
 DF = None
 x = None
 y = None

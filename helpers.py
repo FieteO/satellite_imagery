@@ -1,9 +1,14 @@
-from typing import Tuple
-import numpy as np
 import os
 import random
-import tensorflow as tf
+from pathlib import Path
+from typing import Tuple
+
+import numpy as np
 import pandas as pd
+import tensorflow as tf
+from shapely.geometry.multipolygon import MultiPolygon
+import matplotlib.pyplot as plt
+
 
 def can_be_concatenated(layer1, layer2):
     """Check wether the first three layer dimensions (i.e `[None,1,1]`) are the same and can thus be concatenated."""
@@ -125,6 +130,7 @@ def _get_xmax_ymin(grid_sizes_panda, imageId):
 
 def _get_polygon_list(wkt_list_pandas, imageId, cType):
     from shapely.wkt import loads as wkt_loads
+
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
     df_image = wkt_list_pandas[wkt_list_pandas.ImageId == imageId]
@@ -135,19 +141,19 @@ def _get_polygon_list(wkt_list_pandas, imageId, cType):
         polygonList = wkt_loads(multipoly_def.values[0])
     return polygonList
 
-def _get_and_convert_contours(polygonList, raster_img_size, xymax):
+def _get_and_convert_contours(multipolygon: MultiPolygon, raster_img_size: Tuple[int, int], xymax):
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
     perim_list = []
     interior_list = []
-    if polygonList is None:
+    if multipolygon is None:
         return None
-    for k in range(len(polygonList)):
-        poly = polygonList[k]
-        perim = np.array(list(poly.exterior.coords))
+    for k in range(len(multipolygon.geoms)):
+        polygon = multipolygon.geoms[k]
+        perim = np.array(list(polygon.exterior.coords))
         perim_c = _convert_coordinates_to_raster(perim, raster_img_size, xymax)
         perim_list.append(perim_c)
-        for pi in poly.interiors:
+        for pi in polygon.interiors:
             interior = np.array(list(pi.coords))
             interior_c = _convert_coordinates_to_raster(interior, raster_img_size, xymax)
             interior_list.append(interior_c)
@@ -207,6 +213,7 @@ def stretch_n(bands, lower_percent=5, higher_percent=95):
 
 def jaccard(y_true, y_pred, smooth = 1e-12):
     from tensorflow.keras import backend
+
     # __author__ = Vladimir Iglovikov
     intersection = backend.sum(y_true * y_pred, axis=[0, -1, -2])
     sum_ = backend.sum(y_true + y_pred, axis=[0, -1, -2])
@@ -217,6 +224,7 @@ def jaccard(y_true, y_pred, smooth = 1e-12):
 
 def jaccard_int(y_true, y_pred, smooth = 1e-12):
     from tensorflow.keras import backend
+
     # __author__ = Vladimir Iglovikov
     y_pred_pos = backend.round(backend.clip(y_pred, 0, 1))
 
@@ -251,12 +259,13 @@ def mask_for_polygons(polygons, im_size):
 
 
 def mask_to_polygons(mask, epsilon=1, min_area=1.):
-    from shapely.geometry import MultiPolygon, Polygon
     from collections import defaultdict
+
     import cv2
+    from shapely.geometry import MultiPolygon, Polygon
+
     # __author__ = Konstantin Lopuhin
     # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
-
     # first, find contours with cv2: it's much faster than shapely
     image, contours, hierarchy = cv2.findContours(
         ((mask == 1) * 255).astype(np.uint8),
@@ -295,15 +304,16 @@ def mask_to_polygons(mask, epsilon=1, min_area=1.):
             all_polygons = MultiPolygon([all_polygons])
     return all_polygons
 
-def read_image(image_id, inDir='dataset/sixteen_band'):
+def read_image(image_id: str, data_dir: Path) -> np.ndarray:
     """Returns a three channel rgb image from a 16 band image"""
     import tifffile as tiff
+
     # __author__ = amaia
     # https://www.kaggle.com/aamaia/dstl-satellite-imagery-feature-detection/rgb-using-m-bands-example
-    filename = os.path.join(inDir, f'{image_id}_M.tif')
-    img = tiff.imread(filename)
-    img = np.moveaxis(img, 0, 2)
-    return img
+    filepath = data_dir.joinpath(f'{image_id}_M.tif')
+    image = tiff.imread(filepath)
+    image = np.moveaxis(image, 0, 2)
+    return image
 
 def subset_in_folder(dataframe, folder):
     """Filter out dataframe rows that do not exist as a file"""
@@ -313,62 +323,56 @@ def subset_in_folder(dataframe, folder):
     subset = dataframe[dataframe['ImageId'].isin(unique_ids)]
     return subset
 
-def generate_training_files(masks: pd.DataFrame, grid_sizes: pd.DataFrame, x_train_path, y_train_path) -> Tuple[np.ndarray, np.ndarray]:
+def read_images_masks(masks: pd.DataFrame, grid_sizes: pd.DataFrame, data_dir: Path) -> Tuple[np.ndarray, np.ndarray]:
     """Saves the images and masks of the 25 train files as numpy arrays.
 
     The images initially have slightly different sizes and are therefore reshaped to `(835, 835, 8)`.
     This is marginally smaller then the smallest real image dimension of `837` pixels
     """
 
-    if not x_train_path.exists() or not y_train_path.exists():
-        print('Generating a training dataset...')
-        image_size  = 835
-        ids         = sorted(masks['ImageId'].unique())
-        n_classes   = masks['ClassType'].nunique()
-        # code becomes unreadable with image_size
-        s = image_size
+    print('Generating a training dataset...')
+    image_size  = 835
+    ids         = sorted(masks['ImageId'].unique())
+    n_classes   = masks['ClassType'].nunique()
+    # code becomes unreadable with image_size
+    s = image_size
 
-        x = np.zeros((5 * image_size, 5 * image_size, 8))
-        y = np.zeros((5 * image_size, 5 * image_size, n_classes))
+    x = np.zeros((5 * image_size, 5 * image_size, 8))
+    y = np.zeros((5 * image_size, 5 * image_size, n_classes))
 
-        
-        # print(f'Number of images in train: {len(ids)}')
-        # print(f'Shape of x: {x.shape}')
-        # print(f'Shape of y: {y.shape}')
-        # print(f'Resulting uniform image size: (835, 835, 8)')
-        for i in range(5):
-            for j in range(5):
-                id = ids[5 * i + j]
-                img = read_image(id)
-                img = stretch_n(img)
-                # print(f'img id: {id}, shape: {img.shape}, max val: {np.amax(img)}, min val: {np.amin(img)}')
-                i_pos = s * i
-                j_pos = s * j
-                # write images of size (835,835, 8) to the array
-                x[i_pos:i_pos + s, j_pos:j_pos + s, :] = img[:s, :s, :]
-                
-                # Save image masks in y
-                for z in range(n_classes):
-                    img_mask = generate_mask_for_image_and_class(
-                        raster_size=(img.shape[0], img.shape[1]),
-                        imageId=id,
-                        class_type=z + 1,
-                        grid_sizes_panda=grid_sizes,
-                        wkt_list_pandas=masks
-                    )
-                    y[i_pos:i_pos + s, j_pos:j_pos + s, z] = img_mask[:s, :s]
-        np.save(x_train_path, x)
-        np.save(y_train_path, y)
-        return (x, y)
-    else:
-        print('Training dataset already exists, skipping.')
-        x = np.load(x_train_path)
-        y = np.load(y_train_path)
-        return (x, y)
+    
+    # print(f'Number of images in train: {len(ids)}')
+    # print(f'Shape of x: {x.shape}')
+    # print(f'Shape of y: {y.shape}')
+    # print(f'Resulting uniform image size: (835, 835, 8)')
+    for i in range(5):
+        for j in range(5):
+            id = ids[5 * i + j]
+            img = read_image(id, data_dir)
+            img = stretch_n(img)
+            # print(f'img id: {id}, shape: {img.shape}, max val: {np.amax(img)}, min val: {np.amin(img)}')
+            i_pos = s * i
+            j_pos = s * j
+            # write images of size (835,835, 8) to the array
+            x[i_pos:i_pos + s, j_pos:j_pos + s, :] = img[:s, :s, :]
+            
+            # Save image masks in y
+            for z in range(n_classes):
+                img_mask = generate_mask_for_image_and_class(
+                    raster_size=(img.shape[0], img.shape[1]),
+                    imageId=id,
+                    class_type=z + 1,
+                    grid_sizes_panda=grid_sizes,
+                    wkt_list_pandas=masks
+                )
+                y[i_pos:i_pos + s, j_pos:j_pos + s, z] = img_mask[:s, :s]
+    return (x, y)
 
 from tensorflow.keras.callbacks import History
-def get_metric_plot(history: History, metric):
-    import matplotlib.pyplot as plt
+
+
+def get_metric_plot(history: History, metric) -> plt:
+    
     train_metrics = history.history[metric]
     val_metrics = history.history['val_'+metric]
     epochs = range(1, len(train_metrics) + 1)

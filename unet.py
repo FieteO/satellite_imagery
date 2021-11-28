@@ -18,7 +18,7 @@ from tensorflow.keras.utils import plot_model
 from tensorflow.python.keras.layers.merge import concatenate
 from tensorflow.python.keras.metrics import MeanIoU
 
-from helpers import (calc_jacc, generate_training_files, get_metric_plot,
+from helpers import (calc_jacc, read_images_masks, get_metric_plot,
                      get_patches, get_scalers, jaccard, jaccard_int, mask_for_polygons,
                      mask_to_polygons, read_image, stretch_n)
 
@@ -45,6 +45,11 @@ def train_net(epochs=2):
     print('Done loading validation and training dataset.')
 
     x_trn, y_trn = get_patches(img, msk)
+
+    print(f'x_trn: {x_trn.shape}')
+    print(f'y_trn: {y_trn.shape}')
+    print(f'x_val: {x_val.shape}')
+    print(f'y_val: {y_val.shape}')
 
     model = get_unet(image_size)
     callbacks = [
@@ -214,23 +219,27 @@ def check_predict(id='6120_2_3', image_size=160):
 
 if __name__ == '__main__':
     N_Cls = 10
-    inDir = 'dataset'
+    data_dir = Path('dataset')
+    image_folder = data_dir.joinpath('sixteen_band')
     model_outdir = 'App/unet'
     model_version = 1
     image_size = 160
     smooth = 1e-12
     train_epochs = 1
 
-    MASK_DF = pd.read_csv(inDir + '/train_wkt_v4.csv')
-    GRID_DF = pd.read_csv(inDir + '/grid_sizes.csv', names=['ImageId', 'Xmax', 'Ymin'], skiprows=1)
-    SB = pd.read_csv(os.path.join(inDir, 'sample_submission.csv'))
+    MASK_DF = pd.read_csv(data_dir.joinpath('train_wkt_v4.csv'))
+    GRID_DF = pd.read_csv(data_dir.joinpath('grid_sizes.csv'),
+                     names=['ImageId', 'Xmax', 'Ymin'], skiprows=1)
+    SB = pd.read_csv(data_dir.joinpath('sample_submission.csv'))
 
-    x_train_path = Path(f'{inDir}/x_trn_{N_Cls}.npy')
-    y_train_path = Path(f'{inDir}/y_trn_{N_Cls}.npy')
-    x_val_path   = Path(f'{inDir}/x_val_{N_Cls}.npy')
-    y_val_path   = Path(f'{inDir}/y_val_{N_Cls}.npy')
+    images_path  = data_dir.joinpath('images.npy')
+    masks_path   = data_dir.joinpath('masks.npy')
+    x_train_path = data_dir.joinpath(f'x_trn_{N_Cls}.npy')
+    y_train_path = data_dir.joinpath(f'y_trn_{N_Cls}.npy')
+    x_val_path   = data_dir.joinpath(f'x_val_{N_Cls}.npy')
+    y_val_path   = data_dir.joinpath(f'y_val_{N_Cls}.npy')
 
-    x, y = generate_training_files(MASK_DF, GRID_DF, x_train_path, y_train_path)
+    # x, y = read_images_masks(MASK_DF, GRID_DF, image_folder)
     make_val()
     model = train_net(epochs=train_epochs)
     
