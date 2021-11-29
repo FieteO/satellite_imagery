@@ -1,3 +1,4 @@
+from tensorflow.keras.callbacks import History
 import os
 import random
 from pathlib import Path
@@ -14,6 +15,7 @@ def can_be_concatenated(layer1, layer2):
     """Check wether the first three layer dimensions (i.e `[None,1,1]`) are the same and can thus be concatenated."""
     return layer1.shape.as_list()[:3] == layer2.shape.as_list()[:3]
 
+
 def _convert_coordinates_to_raster(coords, img_size, xymax):
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
@@ -28,7 +30,8 @@ def _convert_coordinates_to_raster(coords, img_size, xymax):
     coords_int = np.round(coords).astype(np.int32)
     return coords_int
 
-def calc_jacc(model, img, msk, N_Cls = 10):
+
+def calc_jacc(model, img, msk, N_Cls=10):
     from sklearn.metrics import jaccard_score
 
     prd = model.predict(img, batch_size=4)
@@ -57,6 +60,7 @@ def calc_jacc(model, img, msk, N_Cls = 10):
     score = sum(avg) / 10.0
     return score, trs
 
+
 def get_patch(images: np.ndarray, masks: np.ndarray, image_size) -> Tuple[np.ndarray, np.ndarray]:
     """
     Returns an image patch from a random position in the given array
@@ -67,14 +71,15 @@ def get_patch(images: np.ndarray, masks: np.ndarray, image_size) -> Tuple[np.nda
     # this is to prevent an array out of bounds in the following steps
     random_x_pos = random.randint(0, x_length - image_size)
     random_y_pos = random.randint(0, y_length - image_size)
-    
+
     x_lower = random_x_pos
     y_lower = random_y_pos
     x_upper = random_x_pos + image_size
     y_upper = random_y_pos + image_size
-    image_patch = images[x_lower:x_upper, y_lower:y_upper,:]
-    mask_patch  =  masks[x_lower:x_upper, y_lower:y_upper,:]
+    image_patch = images[x_lower:x_upper, y_lower:y_upper, :]
+    mask_patch = masks[x_lower:x_upper, y_lower:y_upper, :]
     return image_patch, mask_patch
+
 
 def get_patches(images, masks, num_patches, aug=True, image_size=160, N_Cls=10, labels_start=False):
     """
@@ -85,10 +90,12 @@ def get_patches(images, masks, num_patches, aug=True, image_size=160, N_Cls=10, 
     :param int  num_patches:  number of get_patch iterations. This does not define the number of patches in the output!
     :param bool labels_start: have labels in the second dimension of the output array
     """
-    assert image_size == int(1.0 * image_size), 'image_size should conform to a specific format'
+    assert image_size == int(
+        1.0 * image_size), 'image_size should conform to a specific format'
     x, y = [], []
 
     class_tresholds = [0.4, 0.1, 0.1, 0.15, 0.3, 0.95, 0.1, 0.05, 0.001, 0.005]
+    class_tresholds = [0.2, 0.05, 0.05, 0.075, 0.15, 0.475, 0.05, 0.025, 0.0005, 0.0025]
     for _ in range(num_patches):
         x_patch, y_patch = get_patch(images, masks, image_size)
 
@@ -99,7 +106,7 @@ def get_patches(images, masks, num_patches, aug=True, image_size=160, N_Cls=10, 
             # sum of all the pixel values of the mask
             pixel_sum = np.sum(ms[:, :, class_index])
             average_pixel_value = 1.0 * pixel_sum / image_size ** 2
-            class_treshold  = class_tresholds[class_index]
+            class_treshold = class_tresholds[class_index]
             if average_pixel_value > class_treshold:
                 if aug:
                     if random.uniform(0, 1) > 0.5:
@@ -114,7 +121,7 @@ def get_patches(images, masks, num_patches, aug=True, image_size=160, N_Cls=10, 
     y = np.array(y)
     if labels_start:
         # reshape the array into another column order from (160,160,8) to (8, 160, 160)
-        column_order = (0,3,1,2)
+        column_order = (0, 3, 1, 2)
         x = np.transpose(x, column_order),
         y = np.transpose(y, column_order)
     x = 2 * x - 1
@@ -124,8 +131,10 @@ def get_patches(images, masks, num_patches, aug=True, image_size=160, N_Cls=10, 
 def _get_xmax_ymin(grid_sizes_panda, imageId):
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
-    xmax, ymin = grid_sizes_panda[grid_sizes_panda.ImageId == imageId].iloc[0, 1:].astype(float)
+    xmax, ymin = grid_sizes_panda[grid_sizes_panda.ImageId ==
+                                  imageId].iloc[0, 1:].astype(float)
     return (xmax, ymin)
+
 
 def _get_polygon_list(wkt_list_pandas, imageId, cType):
     from shapely.wkt import loads as wkt_loads
@@ -139,6 +148,7 @@ def _get_polygon_list(wkt_list_pandas, imageId, cType):
         assert len(multipoly_def) == 1
         polygonList = wkt_loads(multipoly_def.values[0])
     return polygonList
+
 
 def _get_and_convert_contours(multipolygon: MultiPolygon, raster_img_size: Tuple[int, int], xymax):
     # __author__ = visoft
@@ -154,9 +164,11 @@ def _get_and_convert_contours(multipolygon: MultiPolygon, raster_img_size: Tuple
         perim_list.append(perim_c)
         for pi in polygon.interiors:
             interior = np.array(list(pi.coords))
-            interior_c = _convert_coordinates_to_raster(interior, raster_img_size, xymax)
+            interior_c = _convert_coordinates_to_raster(
+                interior, raster_img_size, xymax)
             interior_list.append(interior_c)
     return perim_list, interior_list
+
 
 def _plot_mask_from_contours(raster_img_size, contours, class_value=1):
     # __author__ = visoft
@@ -170,6 +182,7 @@ def _plot_mask_from_contours(raster_img_size, contours, class_value=1):
     cv2.fillPoly(img_mask, interior_list, 0)
     return img_mask
 
+
 def generate_mask_for_image_and_class(raster_size, imageId, class_type, grid_sizes_panda, wkt_list_pandas):
     # __author__ = visoft
     # https://www.kaggle.com/visoft/dstl-satellite-imagery-feature-detection/export-pixel-wise-mask
@@ -178,6 +191,7 @@ def generate_mask_for_image_and_class(raster_size, imageId, class_type, grid_siz
     contours = _get_and_convert_contours(polygon_list, raster_size, xymax)
     mask = _plot_mask_from_contours(raster_size, contours, 1)
     return mask
+
 
 def stretch_n(bands, lower_percent=5, higher_percent=95):
     out = np.zeros_like(bands, dtype=np.float32)
@@ -210,7 +224,8 @@ def stretch_n(bands, lower_percent=5, higher_percent=95):
 #     def result(self):
 #         return self.jaccard_score
 
-def jaccard(y_true, y_pred, smooth = 1e-12):
+
+def jaccard(y_true, y_pred, smooth=1e-12):
     from tensorflow.keras import backend
 
     # __author__ = Vladimir Iglovikov
@@ -221,7 +236,8 @@ def jaccard(y_true, y_pred, smooth = 1e-12):
 
     return backend.mean(jac)
 
-def jaccard_int(y_true, y_pred, smooth = 1e-12):
+
+def jaccard_int(y_true, y_pred, smooth=1e-12):
     from tensorflow.keras import backend
 
     # __author__ = Vladimir Iglovikov
@@ -232,6 +248,7 @@ def jaccard_int(y_true, y_pred, smooth = 1e-12):
     jac = (intersection + smooth) / (sum_ - intersection + smooth)
     return backend.mean(jac)
 
+
 def get_scalers(im_size, x_max, y_min):
     # __author__ = Konstantin Lopuhin
     # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
@@ -241,6 +258,7 @@ def get_scalers(im_size, x_max, y_min):
     h_ = 1.0 * h * (h / (h + 1))
     return w_ / x_max, h_ / y_min
 
+
 def mask_for_polygons(polygons, im_size):
     # __author__ = Konstantin Lopuhin
     # https://www.kaggle.com/lopuhin/dstl-satellite-imagery-feature-detection/full-pipeline-demo-poly-pixels-ml-poly
@@ -248,7 +266,8 @@ def mask_for_polygons(polygons, im_size):
     img_mask = np.zeros(im_size, np.uint8)
     if not polygons:
         return img_mask
-    int_coords = lambda x: np.array(x).round().astype(np.int32)
+
+    def int_coords(x): return np.array(x).round().astype(np.int32)
     exteriors = [int_coords(poly.exterior.coords) for poly in polygons]
     interiors = [int_coords(pi.coords) for poly in polygons
                  for pi in poly.interiors]
@@ -303,6 +322,7 @@ def mask_to_polygons(mask, epsilon=1, min_area=1.):
             all_polygons = MultiPolygon([all_polygons])
     return all_polygons
 
+
 def read_image(image_id: str, data_dir: Path) -> np.ndarray:
     """Returns a three channel rgb image from a 16 band image"""
     import tifffile as tiff
@@ -314,6 +334,7 @@ def read_image(image_id: str, data_dir: Path) -> np.ndarray:
     image = np.moveaxis(image, 0, 2)
     return image
 
+
 def subset_in_folder(dataframe, folder):
     """Filter out dataframe rows that do not exist as a file"""
     files_in_folder = os.listdir(folder)
@@ -321,6 +342,7 @@ def subset_in_folder(dataframe, folder):
     unique_ids = set(ids)
     subset = dataframe[dataframe['ImageId'].isin(unique_ids)]
     return subset
+
 
 def read_images_masks(masks: pd.DataFrame, grid_sizes: pd.DataFrame, data_dir: Path) -> Tuple[np.ndarray, np.ndarray]:
     """Saves the images and masks of the 25 train files as numpy arrays.
@@ -330,16 +352,15 @@ def read_images_masks(masks: pd.DataFrame, grid_sizes: pd.DataFrame, data_dir: P
     """
 
     print('Generating a training dataset...')
-    image_size  = 835
-    ids         = sorted(masks['ImageId'].unique())
-    n_classes   = masks['ClassType'].nunique()
+    image_size = 835
+    ids = sorted(masks['ImageId'].unique())
+    n_classes = masks['ClassType'].nunique()
     # code becomes unreadable with image_size
     s = image_size
 
     x = np.zeros((5 * image_size, 5 * image_size, 8))
     y = np.zeros((5 * image_size, 5 * image_size, n_classes))
 
-    
     # print(f'Number of images in train: {len(ids)}')
     # print(f'Shape of x: {x.shape}')
     # print(f'Shape of y: {y.shape}')
@@ -354,7 +375,7 @@ def read_images_masks(masks: pd.DataFrame, grid_sizes: pd.DataFrame, data_dir: P
             j_pos = s * j
             # write images of size (835,835, 8) to the array
             x[i_pos:i_pos + s, j_pos:j_pos + s, :] = img[:s, :s, :]
-            
+
             # Save image masks in y
             for z in range(n_classes):
                 img_mask = generate_mask_for_image_and_class(
@@ -367,17 +388,15 @@ def read_images_masks(masks: pd.DataFrame, grid_sizes: pd.DataFrame, data_dir: P
                 y[i_pos:i_pos + s, j_pos:j_pos + s, z] = img_mask[:s, :s]
     return (x, y)
 
-from tensorflow.keras.callbacks import History
-
 
 def get_metric_plot(history: History, metric) -> plt:
-    
+
     train_metrics = history.history[metric]
     val_metrics = history.history['val_'+metric]
     epochs = range(1, len(train_metrics) + 1)
     plt.plot(epochs, train_metrics)
     plt.plot(epochs, val_metrics)
-    plt.title('Training and validation '+ metric)
+    plt.title('Training and validation ' + metric)
     plt.xlabel("Epochs")
     plt.ylabel(metric)
     plt.legend(["train_"+metric, 'val_'+metric])
