@@ -57,7 +57,7 @@ def calc_jacc(model, img, msk, N_Cls = 10):
     score = sum(avg) / 10.0
     return score, trs
 
-def get_patch(images: np.ndarray, masks: np.ndarray, image_size):
+def get_patch(images: np.ndarray, masks: np.ndarray, image_size) -> Tuple[np.ndarray, np.ndarray]:
     """
     Returns an image patch from a random position in the given array
     """
@@ -76,38 +76,37 @@ def get_patch(images: np.ndarray, masks: np.ndarray, image_size):
     mask_patch  =  masks[x_lower:x_upper, y_lower:y_upper,:]
     return image_patch, mask_patch
 
-def get_patches(images, masks, amt=10000, aug=True, image_size=160, N_Cls=10, labels_start=False):
+def get_patches(images, masks, num_patches, aug=True, image_size=160, N_Cls=10, labels_start=False):
     """
     Splits up the given numpy array into patches of [number_of_images,8,160,160]
     In: (4175,4175,8)
     Out: (3547, 8, 160, 160)
 
+    :param int  num_patches:  number of get_patch iterations. This does not define the number of patches in the output!
     :param bool labels_start: have labels in the second dimension of the output array
     """
     assert image_size == int(1.0 * image_size), 'image_size should conform to a specific format'
     x, y = [], []
 
-    tr = [0.4, 0.1, 0.1, 0.15, 0.3, 0.95, 0.1, 0.05, 0.001, 0.005]
-    for _ in range(amt):
+    class_tresholds = [0.4, 0.1, 0.1, 0.15, 0.3, 0.95, 0.1, 0.05, 0.001, 0.005]
+    for _ in range(num_patches):
         x_patch, y_patch = get_patch(images, masks, image_size)
 
         im = x_patch
         ms = y_patch
 
         for class_index in range(N_Cls):
-            sm = np.sum(ms[:, :, class_index])
-            magic_number        = 1.0 * sm / image_size ** 2
-            other_magic_number  = tr[class_index]
-            if magic_number > other_magic_number:
+            # sum of all the pixel values of the mask
+            pixel_sum = np.sum(ms[:, :, class_index])
+            average_pixel_value = 1.0 * pixel_sum / image_size ** 2
+            class_treshold  = class_tresholds[class_index]
+            if average_pixel_value > class_treshold:
                 if aug:
                     if random.uniform(0, 1) > 0.5:
                         # print(f'Before: {im[:10,0,0]}')
                         im = im[::-1]
                         # print(f'After: {im[:10,0,0]}')
                         ms = ms[::-1]
-                    if random.uniform(0, 1) > 0.5:
-                        im = im[:, ::-1]
-                        ms = ms[:, ::-1]
                 x.append(im)
                 y.append(ms)
 

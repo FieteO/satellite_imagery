@@ -28,7 +28,7 @@ def make_val():
         print('Creating a validation dataset...')
         images = np.load(x_train_path)
         masks = np.load(y_train_path)
-        x, y = get_patches(images, masks, amt=3000)
+        x, y = get_patches(images, masks, num_patches=3000)
 
         np.save(x_val_path, x)
         np.save(y_val_path, y)
@@ -37,64 +37,48 @@ def make_val():
 
 
 def train_model(images: np.ndarray, masks: np.ndarray, epochs=2):
-    print('Loading validation and training dataset...')
-    # images = np.load(x_train_path)
-    # masks = np.load(y_train_path)
-    # x_val = np.load(x_val_path)
-    # y_val = np.load(y_val_path)
-    print(f'Images before train test split: {images.shape}')
-    # print('Done loading validation and training dataset.')
+
     x_train, x_test, y_train, y_test = train_test_split(
         images, masks, test_size=0.2, random_state=42)
 
-    print(f'Images after train test split: {x_train.shape}')
-    print(y_train.shape)
-
     # random patches in correct model input size
-    x_train, y_train = get_patches(x_train, y_train)
-    x_test, y_test = get_patches(x_test, y_test)
-
-    print(x_train.shape)
-    print(y_train.shape)
+    x_train, y_train = get_patches(x_train, y_train, num_patches=5000)
+    x_test, y_test   = get_patches(x_test, y_test, num_patches=1000)
 
     model = get_segnet(image_size)
     callbacks = [
-        ModelCheckpoint('weights/segnet_tmp.hdf5',
+        ModelCheckpoint('weights/segnet.hdf5',
                         monitor='loss', save_best_only=True),
         EarlyStopping(monitor='val_jaccard', patience=8)
     ]
-    print(x_train.shape)
-    print(y_train.shape)
-    for _ in range(1):
-        history = model.fit(x=x_train, y=y_train, batch_size=64, epochs=epochs, shuffle=True,
-                            callbacks=callbacks, validation_data=(x_test, y_test))
 
-        del x_train
-        del y_train
-        # x_trn, y_trn = get_patches(img, msk)
-        # x_val = np.load(x_val_path)
-        # y_val = np.load(y_val_path)
-        score, _ = calc_jacc(model, x_test, y_test)
-        print(f'Validation Jaccard Score: {score}')
-        # model.save_weights(f'weights/unet_10_jk{score}', save_format='h5')
-        model.save(f'models/segnet_jk_score_{round(score,3)}.h5')
-        np.save(
-            f'models/segnet_jk_score_{round(score,3)}_history.npy', history.history)
+    history = model.fit(x=x_train, y=y_train, batch_size=64, epochs=epochs, shuffle=True,
+                        callbacks=callbacks, validation_data=(x_test, y_test))
 
-        plot_outdir = Path('models/plots')
-        plot_outdir.mkdir(exist_ok=True)
-        plot = get_metric_plot(history, 'accuracy')
-        plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_accuracy.png'))
-        plot.show()
-        plot = get_metric_plot(history, 'loss')
-        plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_loss.png'))
-        plot.show()
-        plot = get_metric_plot(history, 'jaccard')
-        plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_jaccard.png'))
-        plot.show()
-        plot = get_metric_plot(history, 'jaccard_int')
-        plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_jaccard_int.png'))
-        plot.show()
+    del x_train
+    del y_train
+
+    score, _ = calc_jacc(model, x_test, y_test)
+    print(f'Validation Jaccard Score: {score}')
+    # model.save_weights(f'weights/unet_10_jk{score}', save_format='h5')
+    model.save(f'models/segnet_jk_score_{round(score,3)}.h5')
+    np.save(
+        f'models/segnet_jk_score_{round(score,3)}_history.npy', history.history)
+
+    plot_outdir = Path('models/plots')
+    plot_outdir.mkdir(exist_ok=True)
+    plot = get_metric_plot(history, 'accuracy')
+    plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_accuracy.png'))
+    plot.show()
+    plot = get_metric_plot(history, 'loss')
+    plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_loss.png'))
+    plot.show()
+    plot = get_metric_plot(history, 'jaccard')
+    plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_jaccard.png'))
+    plot.show()
+    plot = get_metric_plot(history, 'jaccard_int')
+    plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_jaccard_int.png'))
+    plot.show()
     return model
 
 # https://www.kaggle.com/hashbanger/skin-lesion-segmentation-using-segnet
@@ -312,7 +296,7 @@ if __name__ == '__main__':
     model_version = 1
     image_size = 160
     smooth = 1e-12
-    train_epochs = 1
+    train_epochs = 20
 
     MASK_DF = pd.read_csv(data_dir.joinpath('train_wkt_v4.csv'))
     GRID_DF = pd.read_csv(data_dir.joinpath('grid_sizes.csv'),
@@ -327,6 +311,7 @@ if __name__ == '__main__':
     y_val_path   = data_dir.joinpath(f'y_val_{N_Cls}.npy')
 
     if not images_path.exists() or not masks_path.exists():
+        print('Creating base dataset...')
         images, masks = read_images_masks(MASK_DF, GRID_DF, image_folder)
         np.save(images_path, images)
         np.save(masks_path, masks)
@@ -335,15 +320,6 @@ if __name__ == '__main__':
         images = np.load(images_path)
         masks  = np.load(masks_path)
 
-    print(f'Images shape: {images.shape}')
-    print(f'Masks shape: {masks.shape}')
-
-    # np.save(x_train_path, x)
-    # np.save(y_train_path, y)
-    # make_val()
-    
-    
-    # model = get_segnet(image_size)
     model = train_model(images, masks, train_epochs)
 
     # score, trs = calc_jacc(model, np.load(x_val_path), np.load(y_val_path))

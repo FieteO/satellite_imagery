@@ -29,7 +29,7 @@ def make_val():
         print('Creating a validation dataset...')
         img = np.load(x_train_path)
         msk = np.load(y_train_path)
-        x, y = get_patches(img, msk, amt=3000)
+        x, y = get_patches(img, msk, num_patches=3000)
 
         np.save(x_val_path, x)
         np.save(y_val_path, y)
@@ -44,7 +44,7 @@ def train_net(epochs=2):
     y_val = np.load(y_val_path)
     print('Done loading validation and training dataset.')
 
-    x_trn, y_trn = get_patches(img, msk)
+    x_trn, y_trn = get_patches(img, msk, num_patches=5000)
 
     print(f'x_trn: {x_trn.shape}')
     print(f'y_trn: {y_trn.shape}')
@@ -64,7 +64,7 @@ def train_net(epochs=2):
 
         del x_trn
         del y_trn
-        # x_trn, y_trn = get_patches(img, msk)
+        # x_trn, y_trn = get_patches(img, msk, num_patches=5000)
         # x_val = np.load(x_val_path)
         # y_val = np.load(y_val_path)
         score, _ = calc_jacc(model, x_val, y_val)
