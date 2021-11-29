@@ -315,15 +315,10 @@ if __name__ == '__main__':
     x_val_path = Path(f'{inDir}/x_val_{N_Cls}.npy')
     y_val_path = Path(f'{inDir}/y_val_{N_Cls}.npy')
 
-    images = np.load(x_train_path)
-    masks = np.load(y_train_path)
-
     x, y = generate_training_files(MASK_DF, GRID_DF, x_train_path, y_train_path)
     # np.save(x_train_path, x)
     # np.save(y_train_path, y)
     make_val()
-    print(images.shape)
-    print(masks.shape)
     model = get_segnet(image_size)
     model = train_net(epochs=train_epochs)
 
