@@ -213,19 +213,19 @@ def stretch_n(bands, lower_percent=5, higher_percent=95):
 
 # https://www.tensorflow.org/api_docs/python/tf/keras/metrics/Metric#standalone_usage_2
 # Not done yet
-class Jaccard(tf.keras.metrics.Metric):
-    """
-    A custom Keras metric to compute the running average of the confusion matrix
-    """
-    def __init__(self, name='jaccard', **kwargs):
-        super(Jaccard, self).__init__(name=name, **kwargs)
-        self.jaccard_score = self.add_weight(name='jc', initializer='zeros')
+# class Jaccard(tf.keras.metrics.Metric):
+#     """
+#     A custom Keras metric to compute the running average of the confusion matrix
+#     """
+#     def __init__(self, name='jaccard', **kwargs):
+#         super(Jaccard, self).__init__(name=name, **kwargs)
+#         self.jaccard_score = self.add_weight(name='jc', initializer='zeros')
 
-    def update_state(self, y_true, y_pred, sample_weight=None):
-        self.jaccard_score.assign_add()
+#     def update_state(self, y_true, y_pred, sample_weight=None):
+#         self.jaccard_score.assign_add()
 
-    def result(self):
-        return self.jaccard_score
+#     def result(self):
+#         return self.jaccard_score
 
 def jaccard(y_true, y_pred, smooth = 1e-12):
     from tensorflow.keras import backend
