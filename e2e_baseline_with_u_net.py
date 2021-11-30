@@ -17,8 +17,8 @@ from tensorflow.keras.utils import plot_model
 from tensorflow.python.keras.layers.merge import concatenate
 
 from helpers import (calc_jacc, generate_training_files, get_metric_plot,
-                     get_patches, get_rgb_from_m_band, get_scalers,
-                     jaccard_coef, jaccard_coef_int, mask_for_polygons,
+                     get_patches, get_scalers,
+                    mask_for_polygons,
                      mask_to_polygons, stretch_n)
 
 
@@ -209,7 +209,7 @@ def check_predict(id='6120_2_3', image_size=160):
 
 if __name__ == '__main__':
     N_Cls = 10
-    inDir = 'dataset'
+    inDir = './data.nosync'
     band = 'sixteen_band'
     image_size = 160
     smooth = 1e-12
@@ -226,8 +226,8 @@ if __name__ == '__main__':
     x_val_path   = Path(f'{inDir}/x_val_{N_Cls}.npy')
     y_val_path   = Path(f'{inDir}/y_val_{N_Cls}.npy')
 
-    generate_training_files(x_train_path, y_train_path)
-    make_val()
+    generate_training_files(DF, GS, x_train_path, y_train_path)
+    #make_val()
     model = train_net(epochs=train_epochs)
     # score, trs = calc_jacc(model, np.load(x_val_path), np.load(y_val_path))
     # predict_test(model, trs)

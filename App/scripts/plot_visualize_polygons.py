@@ -28,7 +28,7 @@ import pylab
 # See: http://stackoverflow.com/questions/2130913/no-plot-window-in-matplotlib
 # pylab.ion()
 
-inDir = '../input'
+inDir = '../../data.nosync'
 
 # Give short names, sensible colors and zorders to object types
 CLASSES = {
@@ -257,12 +257,15 @@ def visualize_image(imageId, plot_all=True):
 
 
 # Loop over few training images and save to files
-for imageId in trainImageIds:
-    fig, axArr, ax = visualize_image(imageId, plot_all=False)
-    plt.savefig('Objects--' + imageId + '.png')
-    plt.clf()
+#for imageId in trainImageIds:
+#    fig, axArr, ax = visualize_image(imageId, plot_all=False)
+#    plt.savefig('Objects--' + imageId + '.png')
+#    plt.clf()
 
 # Optionally, view images immediately:
 # pylab.show()
 # Uncomment to show plot when interactive mode is off
 # (this function blocks till fig is closed)
+
+fig, axArr, ax = visualize_image('6040_2_2', plot_all = False)
+plt.show()
