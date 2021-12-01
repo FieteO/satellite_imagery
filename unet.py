@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import shapely.affinity
 import shapely.wkt
+from sklearn.model_selection import train_test_split
 from tensorflow.keras import models
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.layers import (BatchNormalization, Conv2D,
@@ -18,10 +19,9 @@ from tensorflow.keras.utils import plot_model
 from tensorflow.python.keras.layers.merge import concatenate
 from tensorflow.python.keras.metrics import MeanIoU
 
-from helpers import (calc_jacc, read_images_masks, get_metric_plot,
-                     get_patches, get_scalers, jaccard, jaccard_int, mask_for_polygons,
-                     mask_to_polygons, read_image, stretch_n)
-
+from helpers import (calc_jacc, get_metric_plot, get_patches, get_scalers,
+                     jaccard, jaccard_int, mask_for_polygons, mask_to_polygons,
+                     read_image, read_images_masks, stretch_n)
 
 
 def make_val():
@@ -38,37 +38,28 @@ def make_val():
         print('Validation dataset already exists, skipping.')
 
 def train_net(epochs=2):
-    print('Loading validation and training dataset...')
-    img = np.load(x_train_path)
-    msk = np.load(y_train_path)
-    x_val = np.load(x_val_path)
-    y_val = np.load(y_val_path)
-    print('Done loading validation and training dataset.')
+    x_train, x_test, y_train, y_test = train_test_split(
+        images, masks, test_size=0.2, random_state=42)
 
-    x_trn, y_trn = get_patches(img, msk, num_patches=5000)
-
-    print(f'x_trn: {x_trn.shape}')
-    print(f'y_trn: {y_trn.shape}')
-    print(f'x_val: {x_val.shape}')
-    print(f'y_val: {y_val.shape}')
+    # random patches in correct model input size
+    x_train, y_train = get_patches(x_train, y_train, num_patches=5000)
+    x_test, y_test   = get_patches(x_test, y_test, num_patches=1000)
 
     model = get_unet(image_size)
     callbacks = [
         ModelCheckpoint('weights/unet_tmp.hdf5', monitor='loss', save_best_only=True),
         EarlyStopping(monitor='val_jaccard', patience=8)
     ]
-    print(x_trn.shape)
-    print(y_trn.shape)
     for _ in range(1):
-        history = model.fit(x=x_trn, y=y_trn, batch_size=64, epochs=epochs, shuffle=True,
-                    callbacks=callbacks, validation_data=(x_val, y_val))
+        history = model.fit(x=x_train, y=y_train, batch_size=64, epochs=epochs, shuffle=True,
+                    callbacks=callbacks, validation_data=(x_test, y_test))
 
-        del x_trn
-        del y_trn
+        del x_train
+        del y_train
         # x_trn, y_trn = get_patches(img, msk, num_patches=5000)
         # x_val = np.load(x_val_path)
         # y_val = np.load(y_val_path)
-        score, _ = calc_jacc(model, x_val, y_val)
+        score, _ = calc_jacc(model, x_test, y_test)
         print(f'Validation Jaccard Score: {score}')
         # model.save_weights(f'weights/unet_10_jk{score}', save_format='h5')
         model.save(f'models/unet_jk_score_{round(score,3)}.h5')
@@ -222,12 +213,12 @@ if __name__ == '__main__':
     N_Cls = 10
     data_dir = Path('dataset')
     image_folder = data_dir.joinpath('sixteen_band')
-    model_outdir = 'App/unet'
-    model_version = 1
+    model_outdir = Path('App/unet')
+    model_version = 2
 
     image_size = 160
     smooth = 1e-12
-    train_epochs = 1
+    train_epochs = 40
 
     MASK_DF = pd.read_csv(data_dir.joinpath('train_wkt_v4.csv'))
     GRID_DF = pd.read_csv(data_dir.joinpath('grid_sizes.csv'),
@@ -241,12 +232,19 @@ if __name__ == '__main__':
     x_val_path   = data_dir.joinpath(f'x_val_{N_Cls}.npy')
     y_val_path   = data_dir.joinpath(f'y_val_{N_Cls}.npy')
 
-    # x, y = read_images_masks(MASK_DF, GRID_DF, image_folder)
-    make_val()
+    if not images_path.exists() or not masks_path.exists():
+        print('Creating base dataset...')
+        images, masks = read_images_masks(MASK_DF, GRID_DF, image_folder)
+        np.save(images_path, images)
+        np.save(masks_path, masks)
+    else:
+        print('Base dataset already exists, skipping.')
+        images = np.load(images_path)
+        masks  = np.load(masks_path)
 
     model = train_net(epochs=train_epochs)
     
-    model_outdir = os.path.join(model_outdir, str(model_version))
+    model_outdir = model_outdir.joinpath(str(model_version))
     models.save_model(
         model,
         model_outdir,

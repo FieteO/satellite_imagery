@@ -16,3 +16,8 @@ services:
         target: /models/unet
         volume:
           nocopy: true
+      - type: bind
+        source: ./App/segnet/
+        target: /models/segnet
+        volume:
+          nocopy: true

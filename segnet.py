@@ -11,16 +11,15 @@ from sklearn.model_selection import train_test_split
 from tensorflow.keras import models
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.layers import (Activation, BatchNormalization, Conv2D,
-                                     Conv2DTranspose, Dense, Dropout, Input,
-                                     MaxPooling2D, Reshape, UpSampling2D)
+                                     Conv2DTranspose, Dense, Input,
+                                     MaxPooling2D, UpSampling2D)
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import plot_model
 
-from helpers import (calc_jacc, read_images_masks, get_metric_plot,
-                     get_patches, get_scalers, jaccard, jaccard_int,
-                     mask_for_polygons, mask_to_polygons, read_image,
-                     stretch_n)
+from helpers import (calc_jacc, get_metric_plot, get_patches, get_scalers,
+                     jaccard, jaccard_int, mask_for_polygons, mask_to_polygons,
+                     read_image, read_images_masks, stretch_n)
 
 
 def make_val():
