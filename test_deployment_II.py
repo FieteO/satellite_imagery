@@ -1,21 +1,19 @@
-from pathlib import Path
-import sys # added!
-
 import numpy as np
 import json
 import requests
 import os
 import re
 
-from modelhelpers import mask_to_polygons, mask_for_polygons, read_image, stretch_n, read_image_rgb
-import matplotlib
-matplotlib.use('maxOSX')
-
+from helpers import mask_to_polygons, mask_for_polygons, read_image, stretch_n, read_image_rgb
 import matplotlib.pyplot as plt
 
+#import sys # added!
+#sys.path.append("../..") # added!
 N_Cls = 10
 MODEL_URI = "http://localhost:8501/v1/models/unet:predict"
+image_path = './data.nosync/sixteen_band/6040_0_3.tif'
 
+inDir = './data.nosync'
 headers = {"content-type": "application/json"}
 CLASSES = {
     1: 'Bldg',
@@ -32,16 +30,13 @@ CLASSES = {
 
 def get_prediction(image_path, image_size=160):
 
-    print(f'imagepath: {image_path}')
-
     # image_path is splitted to recieve the id
     id_full = os.path.basename(image_path)
     id = re.split('_?[A-Z]?\.', id_full)[0]
 
-    sys.path.append("../..")  # added!
-    img_rgb = read_image_rgb(image_id=id, inDir=Path('data.nosync/three_band'))
+    img_rgb = read_image_rgb(image_id=id)
 
-    img = read_image(image_id=id, inDir=Path('data.nosync/sixteen_band'))
+    img = read_image(image_id=id)
 
     x = stretch_n(img)
 
@@ -92,12 +87,13 @@ def get_prediction(image_path, image_size=160):
 
     msk = prd[:img.shape[0], :img.shape[1], :]
     print(f'msk.shape: {msk[1,1,:]}')
+    #return msk
 
     plt.figure()
     fig, axArr = plt.subplots(figsize=(10,10), nrows=3, ncols=5)
 
     ax = axArr[0][0]
-    ax.set_title(f'Image {id} - Format: RGB')
+    ax.set_title(f'RGB Image')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(img_rgb)
@@ -109,89 +105,68 @@ def get_prediction(image_path, image_size=160):
     ax.imshow((img[:, :, 6]).astype(np.uint8))
 
     ax = axArr[0][2]
-    ax.set_title(f'IR Image')
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.imshow((img[:, :, 7]).astype(np.uint8))
-
-    ax = axArr[0][3]
     ax.set_title(f'Yellow - Near IR - IR Image')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow((img[:, :, [5,6, 7]]).astype(np.uint8))
 
-
+    ax = axArr[0][3]
+    ax.set_title(f'IR Image')
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.imshow((img[:, :, 7]).astype(np.uint8))
 
     ax = axArr[1][0]
     ax.set_title(f'prd polygones for class: {CLASSES[1]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,0], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[1][1]
     ax.set_title(f'prd polygones for class: {CLASSES[2]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,1], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[1][2]
     ax.set_title(f'prd polygones for class: {CLASSES[3]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,2], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[1][3]
     ax.set_title(f'prd polygones for class: {CLASSES[4]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,3], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[1][4]
     ax.set_title(f'prd polygones for class: {CLASSES[5]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,4], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][0]
     ax.set_title(f'prd polygones for class: {CLASSES[6]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,5], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][1]
     ax.set_title(f'prd polygones for class: {CLASSES[7]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:, :, 6], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][2]
     ax.set_title(f'prd polygones for class: {CLASSES[8]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:, :, 7], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][3]
     ax.set_title(f'prd polygones for class: {CLASSES[9]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:, :, 8], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][4]
     ax.set_title(f'prd polygones for class: {CLASSES[10]}')
-    ax.set_xticks([])
-    ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:, :, 9], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
-    plt.savefig(Path('App/static/new_plot.png'))
+    plt.show()
+    return plt
 
-    return msk, plt
+get_prediction(image_path=image_path)

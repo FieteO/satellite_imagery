@@ -23,6 +23,7 @@ from helpers import (calc_jacc, read_images_masks, get_metric_plot,
                      mask_to_polygons, read_image, stretch_n)
 
 
+
 def make_val():
     """Create a validation set"""
     if not x_val_path.exists() or not y_val_path.exists():
@@ -223,6 +224,7 @@ if __name__ == '__main__':
     image_folder = data_dir.joinpath('sixteen_band')
     model_outdir = 'App/unet'
     model_version = 1
+
     image_size = 160
     smooth = 1e-12
     train_epochs = 1
@@ -241,6 +243,7 @@ if __name__ == '__main__':
 
     # x, y = read_images_masks(MASK_DF, GRID_DF, image_folder)
     make_val()
+
     model = train_net(epochs=train_epochs)
     
     model_outdir = os.path.join(model_outdir, str(model_version))

@@ -1,13 +1,4 @@
-1. Button zum Hochladen der Datei
-2. Datei öffnen
-3. Model anwenden und predicten
-4. Poligone zeichnen
-5. Bild zwischenspeichern
-6. Bild plotten
-
 Docker comand:
-docker run -p 8501:8501 \
-  --mount type=bind,source=/Users/arturgergert/Documents/Studium/Master/3.\ Semester/BigData_Analyseprojekt/satellite_imagery/App/unet,target=/models/my_model -e MODEL_NAME=my_model -t emacski/tensorflow-serving
 
 docker run -p 8501:8501 \
   --mount type=bind,source=/Users/arturgergert/Documents/Studium/Master/3.\ Semester/BigData_Analyseprojekt/satellite_imagery/App/unet/,target=/models/unet -e MODEL_NAME=unet -t emacski/tensorflow-serving
