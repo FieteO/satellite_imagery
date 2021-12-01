@@ -8,6 +8,7 @@ import pandas as pd
 import shapely.affinity
 import shapely.wkt
 from sklearn.model_selection import train_test_split
+from tensorflow.keras import models
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.keras.layers import (Activation, BatchNormalization, Conv2D,
                                      Conv2DTranspose, Dense, Dropout, Input,
@@ -91,102 +92,102 @@ def get_segnet(image_size):
     print(inputs.shape)
 
     # Encoding layers
-    c1 = Conv2D(64, (3, 3), padding='same')(inputs)
+    c1 = Conv2D(32, (3, 3), padding='same')(inputs)
     c1 = BatchNormalization()(c1)
     c1 = Activation('relu')(c1)
-    c1 = Conv2D(64, (3, 3), padding='same')(c1)
+    c1 = Conv2D(32, (3, 3), padding='same')(c1)
     c1 = BatchNormalization()(c1)
     c1 = Activation('relu')(c1)
     p1 = MaxPooling2D()(c1)
 
-    c2 = Conv2D(128, (3, 3), padding='same')(p1)
+    c2 = Conv2D(64, (3, 3), padding='same')(p1)
     c2 = BatchNormalization()(c2)
     c2 = Activation('relu')(c2)
-    c2 = Conv2D(128, (3, 3), padding='same')(c2)
+    c2 = Conv2D(64, (3, 3), padding='same')(c2)
     c2 = BatchNormalization()(c2)
     c2 = Activation('relu')(c2)
     p2 = MaxPooling2D()(c2)
 
-    c3 = Conv2D(256, (3, 3), padding='same')(p2)
+    c3 = Conv2D(128, (3, 3), padding='same')(p2)
     c3 = BatchNormalization()(c3)
     c3 = Activation('relu')(c3)
-    c3 = Conv2D(256, (3, 3), padding='same')(c3)
+    c3 = Conv2D(128, (3, 3), padding='same')(c3)
     c3 = BatchNormalization()(c3)
     c3 = Activation('relu')(c3)
-    c3 = Conv2D(256, (3, 3), padding='same')(c3)
+    c3 = Conv2D(128, (3, 3), padding='same')(c3)
     c3 = BatchNormalization()(c3)
     c3 = Activation('relu')(c3)
     p3 = MaxPooling2D()(c3)
 
-    c4 = Conv2D(512, (3, 3), padding='same')(p3)
+    c4 = Conv2D(256, (3, 3), padding='same')(p3)
     c4 = BatchNormalization()(c4)
     c4 = Activation('relu')(c4)
-    c4 = Conv2D(512, (3, 3), padding='same')(c4)
+    c4 = Conv2D(256, (3, 3), padding='same')(c4)
     c4 = BatchNormalization()(c4)
     c4 = Activation('relu')(c4)
-    c4 = Conv2D(512, (3, 3), padding='same')(c4)
+    c4 = Conv2D(256, (3, 3), padding='same')(c4)
     c4 = BatchNormalization()(c4)
     c4 = Activation('relu')(c4)
     p4 = MaxPooling2D()(c4)
 
-    c5 = Conv2D(512, (3, 3), padding='same')(p4)
+    c5 = Conv2D(256, (3, 3), padding='same')(p4)
     c5 = BatchNormalization()(c5)
     c5 = Activation('relu')(c5)
-    c5 = Conv2D(512, (3, 3), padding='same')(c5)
+    c5 = Conv2D(256, (3, 3), padding='same')(c5)
     c5 = BatchNormalization()(c5)
     c5 = Activation('relu')(c5)
-    c5 = Conv2D(512, (3, 3), padding='same')(c5)
+    c5 = Conv2D(256, (3, 3), padding='same')(c5)
     c5 = BatchNormalization()(c5)
     c5 = Activation('relu')(c5)
     p5 = MaxPooling2D()(c5)
 
-    d1 = Dense(1024, activation='relu')(p5)
-    d1 = Dense(1024, activation='relu')(d1)
+    d1 = Dense(512, activation='relu')(p5)
+    d1 = Dense(512, activation='relu')(d1)
 
     # Decoding Layers
     u1 = UpSampling2D()(d1)
-    c6 = Conv2DTranspose(512, (3, 3), padding='same')(u1)
+    c6 = Conv2DTranspose(256, (3, 3), padding='same')(u1)
     c6 = BatchNormalization()(c6)
     c6 = Activation('relu')(c6)
-    c6 = Conv2DTranspose(512, (3, 3), padding='same')(c6)
+    c6 = Conv2DTranspose(256, (3, 3), padding='same')(c6)
     c6 = BatchNormalization()(c6)
     c6 = Activation('relu')(c6)
-    c6 = Conv2DTranspose(512, (3, 3), padding='same')(c6)
+    c6 = Conv2DTranspose(256, (3, 3), padding='same')(c6)
     c6 = BatchNormalization()(c6)
     c6 = Activation('relu')(c6)
 
     u2 = UpSampling2D()(c6)
-    c7 = Conv2DTranspose(512, (3, 3), padding='same')(u2)
-    c7 = BatchNormalization()(c7)
-    c7 = Activation('relu')(c7)
-    c7 = Conv2DTranspose(512, (3, 3), padding='same')(c7)
+    c7 = Conv2DTranspose(256, (3, 3), padding='same')(u2)
     c7 = BatchNormalization()(c7)
     c7 = Activation('relu')(c7)
     c7 = Conv2DTranspose(256, (3, 3), padding='same')(c7)
     c7 = BatchNormalization()(c7)
     c7 = Activation('relu')(c7)
+    c7 = Conv2DTranspose(128, (3, 3), padding='same')(c7)
+    c7 = BatchNormalization()(c7)
+    c7 = Activation('relu')(c7)
 
     u3 = UpSampling2D()(c7)
-    c8 = Conv2DTranspose(256, (3, 3), padding='same')(u3)
-    c8 = BatchNormalization()(c8)
-    c8 = Activation('relu')(c8)
-    c8 = Conv2DTranspose(256, (3, 3), padding='same')(c8)
+    c8 = Conv2DTranspose(128, (3, 3), padding='same')(u3)
     c8 = BatchNormalization()(c8)
     c8 = Activation('relu')(c8)
     c8 = Conv2DTranspose(128, (3, 3), padding='same')(c8)
     c8 = BatchNormalization()(c8)
     c8 = Activation('relu')(c8)
+    c8 = Conv2DTranspose(64, (3, 3), padding='same')(c8)
+    c8 = BatchNormalization()(c8)
+    c8 = Activation('relu')(c8)
 
     u4 = UpSampling2D()(c8)
-    c9 = Conv2DTranspose(128, (3, 3), padding='same')(u4)
+    c9 = Conv2DTranspose(64, (3, 3), padding='same')(u4)
     c9 = BatchNormalization()(c9)
     c9 = Activation('relu')(c9)
-    c9 = Conv2DTranspose(64, (3, 3), padding='same')(c9)
+    c9 = Conv2DTranspose(32, (3, 3), padding='same')(c9)
     c9 = BatchNormalization()(c9)
     c9 = Activation('relu')(c9)
 
     u5 = UpSampling2D()(c9)
-    c10 = Conv2DTranspose(64, (3, 3), padding='same')(u5)
+    c10 = Conv2DTranspose(32, (3, 3), padding='same')(u5)
     c10 = BatchNormalization()(c10)
     c10= Activation('relu')(c10)
     c10 = Conv2DTranspose(N_Cls, (3, 3), padding='same',activation='sigmoid')(c10)
@@ -292,11 +293,11 @@ if __name__ == '__main__':
     N_Cls = 10
     data_dir = Path('dataset')
     image_folder = data_dir.joinpath('sixteen_band')
-    model_outdir = 'App/unet'
+    model_outdir = Path('App/segnet')
     model_version = 1
     image_size = 160
     smooth = 1e-12
-    train_epochs = 20
+    train_epochs = 40
 
     MASK_DF = pd.read_csv(data_dir.joinpath('train_wkt_v4.csv'))
     GRID_DF = pd.read_csv(data_dir.joinpath('grid_sizes.csv'),
@@ -321,6 +322,18 @@ if __name__ == '__main__':
         masks  = np.load(masks_path)
 
     model = train_model(images, masks, train_epochs)
+
+    model_outdir = model_outdir.joinpath(str(model_version))
+    models.save_model(
+        model,
+        model_outdir,
+        overwrite=True,
+        include_optimizer=True,
+        save_format=None,
+        signatures=None,
+        options=None
+    )
+    print(f'Saved model to ${model_outdir}')
 
     # score, trs = calc_jacc(model, np.load(x_val_path), np.load(y_val_path))
     # predict_test(model, trs)
