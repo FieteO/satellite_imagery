@@ -213,7 +213,7 @@ if __name__ == '__main__':
     N_Cls = 10
     data_dir = Path('dataset')
     image_folder = data_dir.joinpath('sixteen_band')
-    model_outdir = Path('demo/unet')
+    model_outdir = Path('demo/models/unet')
     model_version = 2
 
     image_size = 160
