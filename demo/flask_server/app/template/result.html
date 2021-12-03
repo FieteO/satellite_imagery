@@ -2,8 +2,9 @@
 
 {% block content %}
   <div class="container">
-    <h1>Imageplot</h1>
-    <img src={{result.img_path}} alt="img-rounded" height="100" width="100">
+    <h2>Imageplot</h2>
+    <!-- <img src={{result.img_path}} alt="img-rounded" height="100" width="100"> -->
+    <img src="{{ url_for('static',filename=result.filename) }}" alt="img-rounded" height="1000" width="1000">
     <hr>
 
     <hr>

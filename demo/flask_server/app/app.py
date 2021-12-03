@@ -11,8 +11,9 @@ from pathlib import Path
 import sys # added!
 
 
-app = Flask(__name__, template_folder='template')
+app = Flask(__name__, template_folder='template', static_folder='static')
 Bootstrap(app)
+app.config['BOOTSTRAP_SERVE_LOCAL'] = True
 #<h1>Predicted Classes: {{ result.object_classes }}</h1>
 """
 Routes
@@ -28,17 +29,17 @@ def index():
             #uploaded_file.save(image_path)
             cls, plt = model.get_prediction(image_path)
 
-            img_path = 'new_plot.png'
+            filename = 'plot.png'
             # plt.savefig(f'../{img_path}')
-            plt.savefig(f'{img_path}')
-            img_path = f'/usr/src/app/{img_path}'
+            plt.savefig(f'static/{filename}')
+            # img_path = f'/usr/src/app/{img_path}'
             result = {
                 'object_classes': cls,
                 'image_path': image_path,
-                'img_path': img_path
+                'filename': filename
             }
-
-            return render_template('result.html', result = result, plot_name='new_plot', plot_url=img_path)
+            models = ['unet','segnet']
+            return render_template('result.html', result = result, plot_name='new_plot', plot_url=filename, models=models)
     return render_template('index.html')
 
 if __name__ == '__main__':

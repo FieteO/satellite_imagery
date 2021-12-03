@@ -13,3 +13,5 @@ data.nosync
 **/segnet/**
 models
 .idea/
+.env
+*.tif

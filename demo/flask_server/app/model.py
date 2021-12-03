@@ -44,20 +44,20 @@ def get_prediction(image_path, image_size=160):
     id = re.split('_?[A-Z]?\.', id_full)[0]
 
     sys.path.append("../..")  # added!
-    img_rgb = read_image_rgb(image_id=id, inDir=data_dir.joinpath('three_band'))
+    image_three = read_image_rgb(image_id=id, inDir=data_dir.joinpath('three_band'))
 
-    img = read_image(image_id=id, inDir=data_dir.joinpath('sixteen_band'))
+    image_sixteen = read_image(image_id=id, inDir=data_dir.joinpath('sixteen_band'))
 
-    x = stretch_n(img)
+    x = stretch_n(image_sixteen)
 
-    print(f'images.shape: {img.shape}')
+    print(f'images.shape: {image_sixteen.shape}')
     print('--------------------------------------------------------')
     print(f'x.shape: {x.shape}')
     print('--------------------------------------------------------')
 
     cnv = np.zeros((960, 960, 8)).astype(np.float32)
-    prd = np.zeros((960, 960, N_Cls)).astype(np.float32)
-    cnv[:img.shape[0], :img.shape[1], :] = x
+    pred = np.zeros((960, 960, N_Cls)).astype(np.float32)
+    cnv[:image_sixteen.shape[0], :image_sixteen.shape[1], :] = x
 
     for i in range(0, 6):
         line = []
@@ -88,115 +88,115 @@ def get_prediction(image_path, image_size=160):
         #print(f'prediction for first pixel: {tmp[0, 1, 1, :]}')
 
         for j in range(tmp.shape[0]):
-            prd[i * image_size:(i + 1) * image_size, j * image_size:(j + 1) * image_size,:] = tmp[j]
+            pred[i * image_size:(i + 1) * image_size, j * image_size:(j + 1) * image_size,:] = tmp[j]
 
     trs = [0.4, 0.1, 0.4, 0.3, 0.3, 0.5, 0.3, 0.6, 0.1, 0.1]
     for i in range(N_Cls):
-        #print(f'prd_i.shape: {prd[:,:,i].shape}')
-        prd[:,:,i] = prd[:,:,i] > trs[i]
+        #print(f'pred_i.shape: {pred[:,:,i].shape}')
+        pred[:,:,i] = pred[:,:,i] > trs[i]
 
-    msk = prd[:img.shape[0], :img.shape[1], :]
+    msk = pred[:image_sixteen.shape[0], :image_sixteen.shape[1], :]
     print(f'msk.shape: {msk[1,1,:]}')
 
     plt.figure()
     fig, axArr = plt.subplots(figsize=(10,10), nrows=3, ncols=5)
 
     ax = axArr[0][0]
-    ax.set_title(f'Image {id} - Format: RGB')
+    ax.set_title(f'Ground Truth: RGB')
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.imshow(img_rgb)
+    ax.imshow(image_three)
 
     ax = axArr[0][1]
     ax.set_title(f'Near IR Image')
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.imshow((img[:, :, 6]).astype(np.uint8))
+    ax.imshow((image_sixteen[:, :, 6]).astype(np.uint8))
 
     ax = axArr[0][2]
     ax.set_title(f'IR Image')
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.imshow((img[:, :, 7]).astype(np.uint8))
+    ax.imshow((image_sixteen[:, :, 7]).astype(np.uint8))
 
     ax = axArr[0][3]
     ax.set_title(f'Yellow - Near IR - IR Image')
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.imshow((img[:, :, [5,6, 7]]).astype(np.uint8))
+    ax.imshow((image_sixteen[:, :, [5,6, 7]]).astype(np.uint8))
 
 
 
     ax = axArr[1][0]
-    ax.set_title(f'prd polygones for class: {CLASSES[1]}')
+    ax.set_title(f'pred for class: {CLASSES[1]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,0], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[1][1]
-    ax.set_title(f'prd polygones for class: {CLASSES[2]}')
+    ax.set_title(f'pred for class: {CLASSES[2]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,1], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[1][2]
-    ax.set_title(f'prd polygones for class: {CLASSES[3]}')
+    ax.set_title(f'pred for class: {CLASSES[3]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,2], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[1][3]
-    ax.set_title(f'prd polygones for class: {CLASSES[4]}')
+    ax.set_title(f'pred for class: {CLASSES[4]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,3], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[1][4]
-    ax.set_title(f'prd polygones for class: {CLASSES[5]}')
+    ax.set_title(f'pred for class: {CLASSES[5]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,4], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][0]
-    ax.set_title(f'prd polygones for class: {CLASSES[6]}')
+    ax.set_title(f'pred for class: {CLASSES[6]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:,:,5], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][1]
-    ax.set_title(f'prd polygones for class: {CLASSES[7]}')
+    ax.set_title(f'pred for class: {CLASSES[7]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:, :, 6], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][2]
-    ax.set_title(f'prd polygones for class: {CLASSES[8]}')
+    ax.set_title(f'pred for class: {CLASSES[8]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:, :, 7], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][3]
-    ax.set_title(f'prd polygones for class: {CLASSES[9]}')
+    ax.set_title(f'pred for class: {CLASSES[9]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:, :, 8], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
     ax = axArr[2][4]
-    ax.set_title(f'prd polygones for class: {CLASSES[10]}')
+    ax.set_title(f'pred for class: {CLASSES[10]}')
     ax.set_xticks([])
     ax.set_yticks([])
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:, :, 9], epsilon=1),
-                                img.shape[:2]), cmap=plt.get_cmap('gray'))
+                                image_sixteen.shape[:2]), cmap=plt.get_cmap('gray'))
 
-    plt.savefig(Path('./new_plot.png'))
+    # plt.savefig(Path('./new_plot.png'))
 
     return msk, plt

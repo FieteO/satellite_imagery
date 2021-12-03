@@ -4,6 +4,26 @@
 
 ## Getting started
 
+### Directory structure
+``` bash
+fiete@ubu:/ssd2/development/satellite_imagery/demo$ tree -d
+.
+├── flask_server
+│   └── app
+│       ├── static
+│       └── template
+├── models
+│   ├── segnet
+│   │   └── 1
+│   │       └── variables
+│   └── unet
+│       └── 1
+│           └── variables
+└── scripts
+
+12 directories
+```
+
 ### Environment setup
 Create an `.env` file that contains the environment specific container configuration.
 ``` bash

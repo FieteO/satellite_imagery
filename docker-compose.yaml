@@ -13,12 +13,12 @@ services:
       - TF_CPP_VMODULE=http_server=1
     volumes:
       - type: bind
-        source: ./demo/unet/
+        source: ./demo/models/unet/
         target: /models/unet
         volume:
           nocopy: true
       - type: bind
-        source: ./demo/segnet/
+        source: ./demo/models/segnet/
         target: /models/segnet
         volume:
           nocopy: true
