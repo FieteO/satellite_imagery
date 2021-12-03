@@ -2,8 +2,9 @@
 version: "3.7"
 
 services:
-  flask_server:
+  tf_serving_backend:
     image: tensorflow/serving
+    container_name: tf_serving_backend
     ports:
       - "8501:8501"
     environment:
@@ -12,12 +13,30 @@ services:
       - TF_CPP_VMODULE=http_server=1
     volumes:
       - type: bind
-        source: ./App/unet/
+        source: ./demo/unet/
         target: /models/unet
         volume:
           nocopy: true
       - type: bind
-        source: ./App/segnet/
+        source: ./demo/segnet/
         target: /models/segnet
         volume:
           nocopy: true
+  flask_frontend:
+    build: demo/flask_server
+    container_name: flask_frontend
+    environment:
+      DEBUG: ${DEBUG}
+      SERVING_CONTAINER: tf_serving_backend
+      SERVING_PORT: 8501
+    ports:
+      - 80:80
+      - 5000:5000
+    volumes:
+      - type: bind
+        source: ./${DATASET_DIR}/
+        target: /usr/src/app/dataset/
+        volume:
+          nocopy: true
+    depends_on:
+      - tf_serving_backend

@@ -14,7 +14,11 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 N_Cls = 10
-MODEL_URI = "http://localhost:8501/v1/models/unet:predict"
+# MODEL_URI = "http://localhost:8501/v1/models/unet:predict"
+SERVING_CONTAINER = os.getenv('SERVING_CONTAINER')
+SERVING_PORT = os.getenv('SERVING_PORT')
+model = 'unet'
+MODEL_URI = f'http://{SERVING_CONTAINER}:{SERVING_PORT}/v1/models/{model}:predict'
 
 headers = {"content-type": "application/json"}
 CLASSES = {
@@ -33,15 +37,16 @@ CLASSES = {
 def get_prediction(image_path, image_size=160):
 
     print(f'imagepath: {image_path}')
+    data_dir = Path('dataset')
 
     # image_path is splitted to recieve the id
     id_full = os.path.basename(image_path)
     id = re.split('_?[A-Z]?\.', id_full)[0]
 
     sys.path.append("../..")  # added!
-    img_rgb = read_image_rgb(image_id=id, inDir=Path('data.nosync/three_band'))
+    img_rgb = read_image_rgb(image_id=id, inDir=data_dir.joinpath('three_band'))
 
-    img = read_image(image_id=id, inDir=Path('data.nosync/sixteen_band'))
+    img = read_image(image_id=id, inDir=data_dir.joinpath('sixteen_band'))
 
     x = stretch_n(img)
 
@@ -192,6 +197,6 @@ def get_prediction(image_path, image_size=160):
     ax.imshow(mask_for_polygons(mask_to_polygons(msk[:, :, 9], epsilon=1),
                                 img.shape[:2]), cmap=plt.get_cmap('gray'))
 
-    plt.savefig(Path('App/static/new_plot.png'))
+    plt.savefig(Path('./new_plot.png'))
 
     return msk, plt

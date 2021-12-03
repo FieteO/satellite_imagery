@@ -3,6 +3,16 @@
 [Tensorflow Serving REST Tutorial](https://www.tensorflow.org/tfx/tutorials/serving/rest_simple)
 
 ## Getting started
+
+### Environment setup
+Create an `.env` file that contains the environment specific container configuration.
+``` bash
+# Run frontend server in debug mode
+DEBUG=True
+# Directory that the frontend container will mount as a volume
+DATASET_DIR=dataset
+```
+
 ``` bash
 docker-compose up
 ```

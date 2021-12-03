@@ -292,7 +292,7 @@ if __name__ == '__main__':
     N_Cls = 10
     data_dir = Path('dataset')
     image_folder = data_dir.joinpath('sixteen_band')
-    model_outdir = Path('App/segnet')
+    model_outdir = Path('demo/segnet')
     model_version = 1
     image_size = 160
     smooth = 1e-12
@@ -332,7 +332,7 @@ if __name__ == '__main__':
         signatures=None,
         options=None
     )
-    print(f'Saved model to ${model_outdir}')
+    print(f'Saved model to {model_outdir}')
 
     # score, trs = calc_jacc(model, np.load(x_val_path), np.load(y_val_path))
     # predict_test(model, trs)

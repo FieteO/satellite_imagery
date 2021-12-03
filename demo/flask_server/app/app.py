@@ -24,13 +24,14 @@ def index():
         uploaded_file = request.files['file']
         if uploaded_file.filename != '':
             image_path = os.path.join('static', uploaded_file.filename)
+            image_path = uploaded_file.filename
             #uploaded_file.save(image_path)
             cls, plt = model.get_prediction(image_path)
 
-            plt.savefig('../static/new_plot.png')
-            #img_path = os.path.join('../', 'static', 'new_plot.png')
-            img_path = Path('App/static/new_plot.png')
-            print(img_path)
+            img_path = 'new_plot.png'
+            # plt.savefig(f'../{img_path}')
+            plt.savefig(f'{img_path}')
+            img_path = f'/usr/src/app/{img_path}'
             result = {
                 'object_classes': cls,
                 'image_path': image_path,
