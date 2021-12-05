@@ -47,8 +47,8 @@ def train_model(images: np.ndarray, masks: np.ndarray, epochs=2):
 
     model = get_segnet(image_size)
     callbacks = [
-        ModelCheckpoint('weights/segnet.hdf5',
-                        monitor='loss', save_best_only=True),
+        ModelCheckpoint('weights/segnet_{val_jaccard:.2f}.hdf5',
+                        monitor='val_jaccard', save_best_only=True),
         EarlyStopping(monitor='val_jaccard', patience=8)
     ]
 
@@ -69,16 +69,12 @@ def train_model(images: np.ndarray, masks: np.ndarray, epochs=2):
     plot_outdir.mkdir(exist_ok=True)
     plot = get_metric_plot(history, 'accuracy')
     plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_accuracy.png'))
-    plot.show()
     plot = get_metric_plot(history, 'loss')
     plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_loss.png'))
-    plot.show()
     plot = get_metric_plot(history, 'jaccard')
     plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_jaccard.png'))
-    plot.show()
     plot = get_metric_plot(history, 'jaccard_int')
     plot.savefig(plot_outdir.joinpath(f'segnet_jk_score_{round(score,3)}_jaccard_int.png'))
-    plot.show()
     return model
 
 # https://www.kaggle.com/hashbanger/skin-lesion-segmentation-using-segnet
@@ -293,7 +289,7 @@ if __name__ == '__main__':
     data_dir = Path('dataset')
     image_folder = data_dir.joinpath('sixteen_band')
     model_outdir = Path('demo/models/segnet')
-    model_version = 1
+    model_version = 2
     image_size = 160
     smooth = 1e-12
     train_epochs = 40
