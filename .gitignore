@@ -10,5 +10,8 @@ weights
 data.nosync
 .DS_Store
 **/unet/**
+**/segnet/**
 models
 .idea/
+.env
+*.tif

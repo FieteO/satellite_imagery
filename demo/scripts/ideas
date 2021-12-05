@@ -1,0 +1,4 @@
+Docker comand:
+
+docker run -p 8501:8501 \
+  --mount type=bind,source=/Users/arturgergert/Documents/Studium/Master/3.\ Semester/BigData_Analyseprojekt/satellite_imagery/App/unet/,target=/models/unet -e MODEL_NAME=unet -t emacski/tensorflow-serving

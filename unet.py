@@ -37,7 +37,7 @@ def make_val():
     else:
         print('Validation dataset already exists, skipping.')
 
-def train_net(epochs=2):
+def train_model(images: np.ndarray, masks: np.ndarray, epochs=2):
     x_train, x_test, y_train, y_test = train_test_split(
         images, masks, test_size=0.2, random_state=42)
 
@@ -47,7 +47,7 @@ def train_net(epochs=2):
 
     model = get_unet(image_size)
     callbacks = [
-        ModelCheckpoint('weights/unet_tmp.hdf5', monitor='loss', save_best_only=True),
+        ModelCheckpoint('weights/unet.hdf5', monitor='val_jaccard', save_best_only=True),
         EarlyStopping(monitor='val_jaccard', patience=8)
     ]
     for _ in range(1):
@@ -67,16 +67,12 @@ def train_net(epochs=2):
         
         plot = get_metric_plot(history, 'accuracy')
         plot.savefig(f'models/plots/unet_jk_score_{round(score,3)}_accuracy.png')
-        plot.show()
         plot = get_metric_plot(history, 'loss')
         plot.savefig(f'models/plots/unet_jk_score_{round(score,3)}_loss.png')
-        plot.show()
         plot = get_metric_plot(history, 'jaccard')
         plot.savefig(f'models/plots/unet_jk_score_{round(score,3)}_jaccard.png')
-        plot.show()
         plot = get_metric_plot(history, 'jaccard_int')
         plot.savefig(f'models/plots/unet_jk_score_{round(score,3)}_jaccard_int.png')
-        plot.show()
     return model
 
 # https://www.kaggle.com/kmader/data-preprocessing-and-unet-segmentation-gpu
@@ -213,8 +209,8 @@ if __name__ == '__main__':
     N_Cls = 10
     data_dir = Path('dataset')
     image_folder = data_dir.joinpath('sixteen_band')
-    model_outdir = Path('App/unet')
-    model_version = 2
+    model_outdir = Path('demo/models/unet')
+    model_version = 4
 
     image_size = 160
     smooth = 1e-12
@@ -242,7 +238,7 @@ if __name__ == '__main__':
         images = np.load(images_path)
         masks  = np.load(masks_path)
 
-    model = train_net(epochs=train_epochs)
+    model = train_model(images, masks, epochs=train_epochs)
     
     model_outdir = model_outdir.joinpath(str(model_version))
     models.save_model(
@@ -254,7 +250,7 @@ if __name__ == '__main__':
         signatures=None,
         options=None
     )
-    print(f'Saved model to ${model_outdir}')
+    print(f'Saved model to {model_outdir}')
 
     # score, trs = calc_jacc(model, np.load(x_val_path), np.load(y_val_path))
     # predict_test(model, trs)
